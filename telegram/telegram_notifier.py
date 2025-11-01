@@ -144,20 +144,28 @@ _Ordre de vente sera place automatiquement._
         self._send_message(message)
     
     def send_sell_order_placed(self, order_id: str, price: float, size: float,
-                               buy_price: float):
+                               buy_price: float = None, market_type: str = None, usdc_amount: float = None):
         """Notification d'ordre de vente place"""
-        potential_profit = (price - buy_price) * size
-        potential_percent = ((price - buy_price) / buy_price) * 100
-        
         message = f"""
 🔴 *ORDRE DE VENTE PLACe*
 
 🆔 Order ID: `{order_id}`
 💰 Prix vente: `${price:,.2f}`
-📊 Quantite: `{size:.8f} BTC`
-📈 Prix achat: `${buy_price:,.2f}`
-
-💹 Profit potentiel: `${potential_profit:.2f}` ({potential_percent:+.2f}%)
+📊 Quantite: `{size:.8f} BTC`"""
+        
+        if usdc_amount:
+            message += f"\n💵 Montant: `${usdc_amount:.2f}`"
+        
+        if buy_price:
+            potential_profit = (price - buy_price) * size
+            potential_percent = ((price - buy_price) / buy_price) * 100
+            message += f"\n📈 Prix achat: `${buy_price:,.2f}`"
+            message += f"\n💹 Profit potentiel: `${potential_profit:.2f}` ({potential_percent:+.2f}%)"
+        
+        if market_type:
+            message += f"\n📈 Marche: `{market_type}`"
+        
+        message += f"""
 
 ⏰ {datetime.now().strftime('%H:%M:%S')}
 

@@ -1,6 +1,11 @@
 """
 Module de synchronisation des ordres Hyperliquid
 Vérifie le statut réel des ordres et met à jour la BDD
+
+🆕 NOUVELLE LOGIQUE:
+- Analyse par Order ID + Time (le plus récent)
+- Prend le Status le plus récent depuis Order History
+- Met à jour la BDD en conséquence
 """
 
 import time
@@ -84,23 +89,99 @@ class OrderSynchronizer:
     
     def _sync_orders(self):
         """Synchronise tous les ordres actifs"""
-        # Récupérer les ordres ouverts sur Hyperliquid
-        open_orders = self.trading_engine.get_open_orders()
-        
-        if open_orders is None:
-            self.logger.error("❌ Impossible de récupérer les ordres ouverts")
-            return
-        
-        self.logger.info(f"📊 {len(open_orders)} ordre(s) ouvert(s) sur Hyperliquid")
-        
         # Vérifier les ordres d'achat
-        self._check_buy_orders(open_orders)
+        self._check_buy_orders()
         
         # Vérifier les ordres de vente
-        self._check_sell_orders(open_orders)
+        self._check_sell_orders()
     
-    def _check_buy_orders(self, open_orders: List[dict]):
-        """Vérifie les ordres d'achat et met à jour leur statut"""
+    def _get_order_status_from_history(self, order_id: str) -> Dict:
+        """🆕 Récupère le statut le plus récent d'un Order ID depuis l'historique
+        
+        Logique:
+        1. Récupérer TOUS les enregistrements avec cet Order ID
+        2. Trier par Time (le plus récent en premier)
+        3. Retourner le statut du plus récent
+        
+        Returns:
+            dict: {
+                'status': 'open' | 'filled' | 'cancelled' | 'unknown',
+                'timestamp': int,
+                'size': float,
+                'is_recent': bool
+            }
+        """
+        try:
+            # 1. Récupérer les ordres ouverts
+            open_orders = self.trading_engine.get_open_orders()
+            if open_orders is None:
+                open_orders = []
+            
+            # 2. Récupérer l'historique des fills
+            try:
+                user_fills = self.trading_engine.info.user_fills(self.trading_engine.account_address)
+            except Exception as e:
+                self.logger.error(f"❌ Erreur récupération user_fills: {e}")
+                user_fills = []
+            
+            # 3. Construire l'historique complet pour cet Order ID
+            order_history = []
+            
+            # Ajouter l'ordre s'il est ouvert (statut le plus récent possible)
+            for order in open_orders:
+                if str(order.get('id')) == str(order_id):
+                    order_history.append({
+                        'status': 'open',
+                        'timestamp': order.get('timestamp', int(time.time() * 1000)),
+                        'size': float(order.get('amount', 0)),
+                        'source': 'open_orders'
+                    })
+            
+            # Ajouter les fills
+            for fill in user_fills:
+                if str(fill.get('oid')) == str(order_id):
+                    order_history.append({
+                        'status': 'filled',
+                        'timestamp': fill.get('time', 0),
+                        'size': float(fill.get('sz', 0)),
+                        'source': 'user_fills'
+                    })
+            
+            # 4. Trier par timestamp (le plus récent en premier)
+            order_history.sort(key=lambda x: x['timestamp'], reverse=True)
+            
+            # 5. Prendre le statut le plus récent
+            if order_history:
+                most_recent = order_history[0]
+                
+                self.logger.info(f"📊 Order ID {order_id} - Status le plus récent:")
+                self.logger.info(f"   Status: {most_recent['status']}")
+                self.logger.info(f"   Time: {datetime.fromtimestamp(most_recent['timestamp']/1000)}")
+                self.logger.info(f"   Source: {most_recent['source']}")
+                self.logger.info(f"   Total events: {len(order_history)}")
+                
+                return most_recent
+            else:
+                # Aucun enregistrement trouvé
+                self.logger.warning(f"⚠️  Order ID {order_id} - Aucun enregistrement trouvé")
+                return {
+                    'status': 'unknown',
+                    'timestamp': 0,
+                    'size': 0,
+                    'source': 'none'
+                }
+        
+        except Exception as e:
+            self.logger.error(f"❌ Erreur _get_order_status_from_history: {e}")
+            return {
+                'status': 'unknown',
+                'timestamp': 0,
+                'size': 0,
+                'source': 'error'
+            }
+    
+    def _check_buy_orders(self):
+        """🆕 Vérifie les ordres d'achat avec la nouvelle logique"""
         
         # Récupérer les paires en attente d'achat
         buy_pairs = self.database.get_pairs_by_status('Buy')
@@ -110,58 +191,65 @@ class OrderSynchronizer:
         
         self.logger.info(f"📊 {len(buy_pairs)} paire(s) en attente d'achat dans BDD")
         
-        # Récupérer l'historique des trades récents
-        try:
-            user_fills = self.trading_engine.info.user_fills(self.trading_engine.account_address)
-        except Exception as e:
-            self.logger.error(f"❌ Erreur récupération user_fills: {e}")
-            user_fills = []
-        
         for pair in buy_pairs:
-            buy_order_id = str(pair.buy_order_id)
-            
-            # 1. Vérifier si l'ordre est toujours ouvert
-            is_open = any(str(order['id']) == buy_order_id for order in open_orders)
-            
-            if is_open:
-                # L'ordre est toujours ouvert
-                continue
-            
-            # 2. L'ordre n'est plus ouvert - vérifier s'il a été FILLED
-            order_fills = [fill for fill in user_fills if str(fill.get('oid')) == buy_order_id]
-            
-            if order_fills:
-                # ✅ L'ordre a été rempli
-                total_filled = sum(float(fill.get('sz', 0)) for fill in order_fills)
+            try:
+                buy_order_id = str(pair.buy_order_id)
                 
-                if total_filled >= pair.quantity_btc * 0.99:  # Tolérance 1%
-                    self.logger.info(f"✅ Ordre d'achat {buy_order_id} rempli (Filled)")
-                    self.logger.info(f"   Quantité: {total_filled:.8f} BTC")
+                # 🆕 Récupérer le statut le plus récent depuis l'historique
+                order_status = self._get_order_status_from_history(buy_order_id)
+                
+                status = order_status['status']
+                
+                # Décision basée sur le statut le plus récent
+                if status == 'open':
+                    # ✅ Ordre encore ouvert - RAS
+                    self.logger.info(f"⏳ Ordre d'achat {buy_order_id} - Toujours OUVERT")
+                    # Status reste 'Buy' dans la BDD
                     
-                    # Mettre à jour le statut
-                    self.database.update_pair_status(pair.index, 'Sell')
-                    self.logger.info(f"✅ Paire {pair.index} - Achat rempli, status -> Sell")
+                elif status == 'filled':
+                    # ✅ Ordre rempli - Passer en mode Sell
+                    total_filled = order_status['size']
                     
-                    # Notification Telegram
-                    if self.telegram and self.config.telegram_on_order_filled:
-                        try:
-                            self.telegram.send_buy_order_filled(
-                                order_id=buy_order_id,
-                                price=pair.buy_price_btc,
-                                size=total_filled
-                            )
-                        except Exception as e:
-                            self.logger.error(f"❌ Erreur notification: {e}")
-                else:
-                    self.logger.warning(f"⚠️  Ordre {buy_order_id} partiellement rempli")
-                    self.logger.warning(f"   Attendu: {pair.quantity_btc:.8f}, Rempli: {total_filled:.8f}")
-            else:
-                # L'ordre n'est ni ouvert ni dans les fills - probablement annulé
-                self.logger.warning(f"⚠️  Ordre d'achat {buy_order_id} introuvable")
-                self.logger.warning(f"   Peut avoir été annulé - vérification manuelle requise")
+                    # Vérifier si la quantité correspond
+                    if total_filled >= pair.quantity_btc * 0.99:  # Tolérance 1%
+                        self.logger.info(f"✅ Ordre d'achat {buy_order_id} REMPLI")
+                        self.logger.info(f"   Quantité: {total_filled:.8f} BTC")
+                        
+                        # Mettre à jour le statut dans la BDD
+                        self.database.update_pair_status(pair.index, 'Sell')
+                        self.logger.info(f"✅ Paire {pair.index} - Status mis à jour: Buy -> Sell")
+                        
+                        # Notification Telegram
+                        if self.telegram and self.config.telegram_on_order_filled:
+                            try:
+                                self.telegram.send_buy_order_filled(
+                                    order_id=buy_order_id,
+                                    price=pair.buy_price_btc,
+                                    size=total_filled
+                                )
+                            except Exception as e:
+                                self.logger.error(f"❌ Erreur notification: {e}")
+                    else:
+                        self.logger.warning(f"⚠️  Ordre {buy_order_id} partiellement rempli")
+                        self.logger.warning(f"   Attendu: {pair.quantity_btc:.8f}, Rempli: {total_filled:.8f}")
+                
+                elif status == 'cancelled':
+                    # ⚠️ Ordre annulé
+                    self.logger.warning(f"⚠️  Ordre d'achat {buy_order_id} ANNULÉ")
+                    self.logger.warning(f"   Paire {pair.index} nécessite une action manuelle")
+                
+                else:  # unknown
+                    # ❌ Statut inconnu
+                    self.logger.warning(f"❓ Ordre d'achat {buy_order_id} - Statut INCONNU")
+                    self.logger.warning(f"   Vérification manuelle recommandée pour paire {pair.index}")
+                
+            except Exception as e:
+                self.logger.error(f"❌ Erreur vérification paire {pair.index}: {e}")
+                import traceback
+                traceback.print_exc()
     
-    def _check_sell_orders(self, open_orders: List[dict]):
-        """Vérifie les ordres de vente et met à jour leur statut"""
+    def _check_sell_orders(self):
+        """🆕 Vérifie les ordres de vente avec la nouvelle logique"""
         
         # Récupérer les paires en attente de vente
         sell_pairs = self.database.get_pairs_by_status('Sell')
@@ -171,69 +259,76 @@ class OrderSynchronizer:
         
         self.logger.info(f"📊 {len(sell_pairs)} paire(s) en attente de vente dans BDD")
         
-        # Récupérer l'historique des trades récents
-        try:
-            user_fills = self.trading_engine.info.user_fills(self.trading_engine.account_address)
-        except Exception as e:
-            self.logger.error(f"❌ Erreur récupération user_fills: {e}")
-            user_fills = []
-        
         for pair in sell_pairs:
-            sell_order_id = getattr(pair, 'sell_order_id', None)
-            
-            if not sell_order_id:
-                # Ordre de vente pas encore placé
-                continue
-            
-            sell_order_id = str(sell_order_id)
-            
-            # 1. Vérifier si l'ordre est toujours ouvert
-            is_open = any(str(order['id']) == sell_order_id for order in open_orders)
-            
-            if is_open:
-                # L'ordre est toujours ouvert
-                continue
-            
-            # 2. L'ordre n'est plus ouvert - vérifier s'il a été FILLED
-            order_fills = [fill for fill in user_fills if str(fill.get('oid')) == sell_order_id]
-            
-            if order_fills:
-                # ✅ L'ordre a été rempli
-                total_filled = sum(float(fill.get('sz', 0)) for fill in order_fills)
+            try:
+                sell_order_id = getattr(pair, 'sell_order_id', None)
                 
-                if total_filled >= pair.quantity_btc * 0.99:  # Tolérance 1%
-                    self.logger.info(f"✅ Ordre de vente {sell_order_id} rempli (Filled)")
-                    self.logger.info(f"   Quantité: {total_filled:.8f} BTC")
+                if not sell_order_id:
+                    # Ordre de vente pas encore placé
+                    continue
+                
+                sell_order_id = str(sell_order_id)
+                
+                # 🆕 Récupérer le statut le plus récent depuis l'historique
+                order_status = self._get_order_status_from_history(sell_order_id)
+                
+                status = order_status['status']
+                
+                # Décision basée sur le statut le plus récent
+                if status == 'open':
+                    # ✅ Ordre encore ouvert - RAS
+                    self.logger.info(f"⏳ Ordre de vente {sell_order_id} - Toujours OUVERT")
+                    # Status reste 'Sell' dans la BDD
                     
-                    # Calculer le profit
-                    profit = (pair.sell_price_btc - pair.buy_price_btc) * total_filled
-                    profit_percent = ((pair.sell_price_btc - pair.buy_price_btc) / pair.buy_price_btc) * 100
+                elif status == 'filled':
+                    # ✅ Ordre rempli - Cycle complété
+                    total_filled = order_status['size']
                     
-                    # Mettre à jour le statut
-                    self.database.update_pair_status(pair.index, 'Complete')
-                    self.logger.info(f"✅ Paire {pair.index} - Vente remplie, status -> Complete")
-                    self.logger.info(f"💰 Profit: {profit:.2f}$ ({profit_percent:+.2f}%)")
-                    
-                    # Notification Telegram
-                    if self.telegram and self.config.telegram_on_order_filled:
-                        try:
-                            self.telegram.send_sell_order_filled(
-                                order_id=sell_order_id,
-                                price=pair.sell_price_btc,
-                                size=total_filled,
-                                buy_price=pair.buy_price_btc,
-                                profit=profit,
-                                profit_percent=profit_percent
-                            )
-                        except Exception as e:
-                            self.logger.error(f"❌ Erreur notification: {e}")
-                else:
-                    self.logger.warning(f"⚠️  Ordre {sell_order_id} partiellement rempli")
-                    self.logger.warning(f"   Attendu: {pair.quantity_btc:.8f}, Rempli: {total_filled:.8f}")
-            else:
-                # L'ordre n'est ni ouvert ni dans les fills
-                self.logger.warning(f"⚠️  Ordre de vente {sell_order_id} introuvable")
-                self.logger.warning(f"   Peut avoir été annulé - vérification manuelle requise")
+                    # Vérifier si la quantité correspond
+                    if total_filled >= pair.quantity_btc * 0.99:  # Tolérance 1%
+                        self.logger.info(f"✅ Ordre de vente {sell_order_id} REMPLI")
+                        self.logger.info(f"   Quantité: {total_filled:.8f} BTC")
+                        
+                        # Calculer le profit
+                        profit = (pair.sell_price_btc - pair.buy_price_btc) * total_filled
+                        profit_percent = ((pair.sell_price_btc - pair.buy_price_btc) / pair.buy_price_btc) * 100
+                        
+                        # Mettre à jour le statut dans la BDD
+                        self.database.update_pair_status(pair.index, 'Complete')
+                        self.logger.info(f"✅ Paire {pair.index} - Status mis à jour: Sell -> Complete")
+                        self.logger.info(f"💰 Profit: {profit:.2f}$ ({profit_percent:+.2f}%)")
+                        
+                        # Notification Telegram
+                        if self.telegram and self.config.telegram_on_order_filled:
+                            try:
+                                self.telegram.send_sell_order_filled(
+                                    order_id=sell_order_id,
+                                    price=pair.sell_price_btc,
+                                    size=total_filled,
+                                    buy_price=pair.buy_price_btc,
+                                    profit=profit,
+                                    profit_percent=profit_percent
+                                )
+                            except Exception as e:
+                                self.logger.error(f"❌ Erreur notification: {e}")
+                    else:
+                        self.logger.warning(f"⚠️  Ordre {sell_order_id} partiellement rempli")
+                        self.logger.warning(f"   Attendu: {pair.quantity_btc:.8f}, Rempli: {total_filled:.8f}")
+                
+                elif status == 'cancelled':
+                    # ⚠️ Ordre annulé
+                    self.logger.warning(f"⚠️  Ordre de vente {sell_order_id} ANNULÉ")
+                    self.logger.warning(f"   Paire {pair.index} nécessite une action manuelle")
+                
+                else:  # unknown
+                    # ❌ Statut inconnu
+                    self.logger.warning(f"❓ Ordre de vente {sell_order_id} - Statut INCONNU")
+                    self.logger.warning(f"   Vérification manuelle recommandée pour paire {pair.index}")
+                
+            except Exception as e:
+                self.logger.error(f"❌ Erreur vérification paire {pair.index}: {e}")
+                import traceback
+                traceback.print_exc()
     
     def force_sync(self):
         """Force une synchronisation immédiate (pour debug)"""

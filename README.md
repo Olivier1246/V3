@@ -140,7 +140,7 @@ HL-SPOT-BOT/
 ### 1️⃣ Cloner le Projet
 
 ```bash
-git clone https://github.com/votre-repo/hl-spot-bot.git
+git clone https://github.com/Olivier1246/V3.git
 cd hl-spot-bot
 ```
 

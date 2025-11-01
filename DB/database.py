@@ -286,7 +286,35 @@ class Database:
         except Exception as e:
             print(f"❌ Erreur update sell_order: {e}")
             return False
-    
+
+    def update_sell_order_id(self, pair_index: int, sell_order_id: str):
+        """
+        Met à jour l'ID de l'ordre de vente pour une paire d'ordres
+        
+        Args:
+            pair_index: Index de la paire dans la base de données
+            sell_order_id: ID de l'ordre de vente sur Hyperliquid
+        """
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                cursor.execute("""
+                    UPDATE order_pairs 
+                    SET sell_order_id = ?
+                    WHERE id = ?
+                """, (sell_order_id, pair_index))
+                
+                conn.commit()
+                
+                if cursor.rowcount == 0:
+                    raise ValueError(f"Aucune paire trouvée avec l'index {pair_index}")
+                    
+                return True
+                
+        except Exception as e:
+            raise Exception(f"Erreur lors de la mise à jour du sell_order_id: {e}")
+
     def complete_order_pair(self, index: int, sell_price_actual: float = None) -> bool:
         """Marque une paire comme complétée et calcule les gains
         

@@ -1,0 +1,41 @@
+structure des dossier
+/log
+ -trading.log
+/doc
+ -tous les fichier en *.md sauf README.md
+/static
+ -style.css
+/templates
+ -index.html
+/utils
+ -diagnostic.py
+/telegram
+ -telegram_notifier.py
+/DB
+ -database.py
+ -trading_history.db
+/command
+ -bot_controller.py
+ -buy_orders.py
+ -logger.py
+ -market_analyzer.py
+ -reload_config.py
+ -sell_orders.py
+ -sync_hyperliquid_orders.py
+ -trading_engine.py
+ -web_interface.py
+config.py
+deploy.sh
+install.bat
+install.sh
+license.txt
+main.py
+README.md
+requirements.txt
+run.bat
+run.sh
+setup_config.py
+view_order_pairs.py
+order_book_viewer.py
+.env-template
+.env

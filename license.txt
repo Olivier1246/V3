@@ -1,0 +1,236 @@
+MIT License
+
+Copyright (c) 2025 HL-SPOT Trading Bot Contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+===============================================================================
+                            DISCLAIMER / AVERTISSEMENT
+===============================================================================
+
+TRADING RISKS / RISQUES DE TRADING:
+
+This software is provided for educational and informational purposes only.
+Trading cryptocurrencies involves substantial risk of loss and is not suitable
+for every investor. You should carefully consider whether trading is suitable
+for you in light of your circumstances, knowledge, and financial resources.
+
+Ce logiciel est fourni à des fins éducatives et informatives uniquement.
+Le trading de crypto-monnaies comporte un risque substantiel de perte et
+n'est pas adapté à tous les investisseurs. Vous devez examiner attentivement
+si le trading vous convient au regard de votre situation, de vos connaissances
+et de vos ressources financières.
+
+===============================================================================
+
+IMPORTANT WARNINGS / AVERTISSEMENTS IMPORTANTS:
+
+1. NO FINANCIAL ADVICE / PAS DE CONSEIL FINANCIER:
+   This software does NOT provide financial, investment, trading, or any
+   other type of advice. Any actions you take based on the information
+   provided by this software are strictly at your own risk.
+   
+   Ce logiciel ne fournit AUCUN conseil financier, d'investissement, de
+   trading ou autre. Toute action que vous entreprendrez sur la base des
+   informations fournies par ce logiciel est strictement à vos propres risques.
+
+2. POTENTIAL FOR LOSS / POTENTIEL DE PERTE:
+   You may lose some or all of your capital. Never trade with money you
+   cannot afford to lose. Only use funds that are discretionary.
+   
+   Vous pouvez perdre une partie ou la totalité de votre capital. Ne tradez
+   jamais avec de l'argent que vous ne pouvez pas vous permettre de perdre.
+   Utilisez uniquement des fonds discrétionnaires.
+
+3. PAST PERFORMANCE / PERFORMANCES PASSÉES:
+   Past performance is not indicative of future results. Historical
+   returns, expected returns, and probability projections are provided
+   for informational purposes only.
+   
+   Les performances passées ne préjugent pas des résultats futurs. Les
+   rendements historiques, attendus et les projections de probabilité sont
+   fournis à titre informatif uniquement.
+
+4. MARKET VOLATILITY / VOLATILITÉ DU MARCHÉ:
+   Cryptocurrency markets are highly volatile. Prices can fluctuate
+   dramatically in very short time periods. Be prepared for significant
+   price movements.
+   
+   Les marchés des crypto-monnaies sont très volatiles. Les prix peuvent
+   fluctuer considérablement en très peu de temps. Soyez prêt à des
+   mouvements de prix importants.
+
+5. SECURITY RISKS / RISQUES DE SÉCURITÉ:
+   You are responsible for securing your private keys, API keys, and
+   all sensitive information. The authors are not responsible for any
+   loss resulting from compromised security.
+   
+   Vous êtes responsable de la sécurisation de vos clés privées, clés API
+   et de toutes les informations sensibles. Les auteurs ne sont pas
+   responsables des pertes résultant d'une sécurité compromise.
+
+6. TECHNICAL FAILURES / DÉFAILLANCES TECHNIQUES:
+   Software bugs, network issues, API downtime, or other technical
+   problems may result in unexpected behavior and potential losses.
+   
+   Des bugs logiciels, des problèmes de réseau, des temps d'arrêt d'API
+   ou d'autres problèmes techniques peuvent entraîner un comportement
+   inattendu et des pertes potentielles.
+
+7. REGULATORY COMPLIANCE / CONFORMITÉ RÉGLEMENTAIRE:
+   You are responsible for complying with all applicable laws and
+   regulations in your jurisdiction regarding cryptocurrency trading
+   and taxation.
+   
+   Vous êtes responsable du respect de toutes les lois et réglementations
+   applicables dans votre juridiction concernant le trading de crypto-monnaies
+   et la fiscalité.
+
+8. NO WARRANTIES / AUCUNE GARANTIE:
+   This software is provided "as is" without warranty of any kind, either
+   express or implied. Use at your own risk.
+   
+   Ce logiciel est fourni "en l'état" sans garantie d'aucune sorte, expresse
+   ou implicite. Utilisez-le à vos propres risques.
+
+===============================================================================
+
+LIABILITY LIMITATION / LIMITATION DE RESPONSABILITÉ:
+
+Under no circumstances shall the authors, contributors, or copyright holders
+be liable for any direct, indirect, incidental, special, exemplary, or
+consequential damages (including, but not limited to, procurement of
+substitute goods or services; loss of use, data, or profits; or business
+interruption) however caused and on any theory of liability, whether in
+contract, strict liability, or tort (including negligence or otherwise)
+arising in any way out of the use of this software, even if advised of
+the possibility of such damage.
+
+En aucun cas, les auteurs, contributeurs ou détenteurs de droits d'auteur
+ne pourront être tenus responsables de tout dommage direct, indirect,
+accessoire, spécial, exemplaire ou consécutif (y compris, mais sans s'y
+limiter, l'acquisition de biens ou services de substitution; la perte
+d'utilisation, de données ou de profits; ou l'interruption d'activité)
+quelle qu'en soit la cause et selon toute théorie de responsabilité, que
+ce soit en vertu d'un contrat, d'une responsabilité stricte ou d'un délit
+(y compris la négligence ou autre) découlant de quelque manière que ce soit
+de l'utilisation de ce logiciel, même si la possibilité d'un tel dommage
+a été signalée.
+
+===============================================================================
+
+USER RESPONSIBILITIES / RESPONSABILITÉS DE L'UTILISATEUR:
+
+By using this software, you acknowledge and agree that:
+
+En utilisant ce logiciel, vous reconnaissez et acceptez que :
+
+1. You have read and understood this license and disclaimer in full
+   Vous avez lu et compris cette licence et cette clause de non-responsabilité
+   dans leur intégralité
+
+2. You accept all risks associated with trading cryptocurrencies
+   Vous acceptez tous les risques associés au trading de crypto-monnaies
+
+3. You are solely responsible for your trading decisions
+   Vous êtes seul responsable de vos décisions de trading
+
+4. You will test the software thoroughly in a test environment before
+   using it with real funds
+   Vous testerez minutieusement le logiciel dans un environnement de test
+   avant de l'utiliser avec de vrais fonds
+
+5. You will comply with all applicable laws and regulations
+   Vous respecterez toutes les lois et réglementations applicables
+
+6. You understand that the authors provide no support or guarantees
+   Vous comprenez que les auteurs ne fournissent aucun support ni garantie
+
+7. You will not hold the authors liable for any losses or damages
+   Vous ne tiendrez pas les auteurs responsables de toute perte ou dommage
+
+===============================================================================
+
+THIRD-PARTY SERVICES / SERVICES TIERS:
+
+This software interacts with third-party services (Hyperliquid API, Telegram,
+etc.). The authors are not responsible for:
+- Service availability or downtime
+- API changes or deprecations
+- Third-party security breaches
+- Third-party terms of service violations
+
+Ce logiciel interagit avec des services tiers (API Hyperliquid, Telegram,
+etc.). Les auteurs ne sont pas responsables de :
+- La disponibilité ou l'indisponibilité du service
+- Les modifications ou dépréciations de l'API
+- Les violations de sécurité de tiers
+- Les violations des conditions de service de tiers
+
+===============================================================================
+
+MODIFICATIONS / MODIFICATIONS:
+
+You may modify this software for your personal use. However, any modifications
+you make are your sole responsibility. The authors are not responsible for
+any issues arising from modified versions of the software.
+
+Vous pouvez modifier ce logiciel pour votre usage personnel. Cependant, toute
+modification que vous apportez relève de votre seule responsabilité. Les
+auteurs ne sont pas responsables des problèmes résultant des versions
+modifiées du logiciel.
+
+===============================================================================
+
+ACCEPTANCE / ACCEPTATION:
+
+By downloading, installing, or using this software, you indicate your
+acceptance of this license and all its terms and conditions.
+
+En téléchargeant, installant ou utilisant ce logiciel, vous indiquez votre
+acceptation de cette licence et de tous ses termes et conditions.
+
+If you do not agree to these terms, do not use this software.
+
+Si vous n'acceptez pas ces conditions, n'utilisez pas ce logiciel.
+
+===============================================================================
+
+FOR MORE INFORMATION / POUR PLUS D'INFORMATIONS:
+
+Please refer to the README.md file and project documentation for detailed
+information about features, usage, and best practices.
+
+Veuillez vous référer au fichier README.md et à la documentation du projet
+pour des informations détaillées sur les fonctionnalités, l'utilisation et
+les meilleures pratiques.
+
+===============================================================================
+
+CONTACT / CONTACT:
+
+For questions about this license, please open an issue on the project
+repository or contact the project maintainers.
+
+Pour des questions sur cette licence, veuillez ouvrir un problème sur le
+dépôt du projet ou contacter les mainteneurs du projet.
+
+===============================================================================
+                                END OF LICENSE
+===============================================================================

@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>📊 Toutes les Paires d'Ordres - HL-Spot Bot</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Courier New', monospace;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #fff;
+            padding: 20px;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 100%;
+            margin: 0 auto;
+            overflow-x: auto;
+        }
+
+        .header {
+            text-align: center;
+            padding: 30px 20px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+            margin-bottom: 30px;
+            border: 2px solid #00d9ff;
+            box-shadow: 0 0 20px rgba(0, 217, 255, 0.3);
+        }
+
+        .header h1 {
+            font-size: 2em;
+            margin-bottom: 10px;
+            color: #00d9ff;
+            text-shadow: 0 0 10px rgba(0, 217, 255, 0.5);
+            letter-spacing: 2px;
+        }
+
+        .header .subtitle {
+            color: #8892b0;
+            font-size: 0.9em;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 20px;
+            border-radius: 8px;
+            border-left: 4px solid #00d9ff;
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 5px 20px rgba(0, 217, 255, 0.3);
+        }
+
+        .stat-card .label {
+            color: #8892b0;
+            font-size: 0.9em;
+            margin-bottom: 8px;
+        }
+
+        .stat-card .value {
+            color: #00d9ff;
+            font-size: 1.5em;
+            font-weight: bold;
+        }
+
+        .controls {
+            margin-bottom: 20px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            background: rgba(0, 217, 255, 0.2);
+            border: 1px solid #00d9ff;
+            color: #00d9ff;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+
+        .btn:hover {
+            background: rgba(0, 217, 255, 0.4);
+            box-shadow: 0 0 15px rgba(0, 217, 255, 0.5);
+        }
+
+        .table-container {
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 10px;
+            padding: 20px;
+            overflow-x: auto;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85em;
+            min-width: 1400px;
+        }
+
+        thead {
+            background: rgba(0, 217, 255, 0.15);
+        }
+
+        th {
+            padding: 15px 10px;
+            text-align: left;
+            font-weight: bold;
+            color: #00d9ff;
+            border-bottom: 2px solid #00d9ff;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            position: sticky;
+            top: 0;
+            background: rgba(0, 217, 255, 0.15);
+            backdrop-filter: blur(10px);
+        }
+
+        tbody tr {
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            transition: background 0.3s;
+        }
+
+        tbody tr:hover {
+            background: rgba(0, 217, 255, 0.1);
+        }
+
+        td {
+            padding: 12px 10px;
+            color: #ccd6f6;
+        }
+
+        .status {
+            padding: 5px 12px;
+            border-radius: 4px;
+            font-weight: bold;
+            text-align: center;
+            font-size: 0.85em;
+            display: inline-block;
+            min-width: 120px;
+        }
+
+        .status-pending-buy {
+            background: rgba(255, 152, 0, 0.2);
+            border: 1px solid #ff9800;
+            color: #ff9800;
+        }
+
+        .status-awaiting-sell {
+            background: rgba(33, 150, 243, 0.2);
+            border: 1px solid #2196f3;
+            color: #2196f3;
+        }
+
+        .status-complete {
+            background: rgba(76, 175, 80, 0.2);
+            border: 1px solid #4caf50;
+            color: #4caf50;
+        }
+
+        .gain-positive {
+            color: #4caf50;
+            font-weight: bold;
+        }
+
+        .gain-negative {
+            color: #f44336;
+            font-weight: bold;
+        }
+
+        tbody tr:nth-child(even) {
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        td:first-child {
+            font-weight: bold;
+            color: #00d9ff;
+        }
+
+        .no-data {
+            text-align: center;
+            padding: 40px;
+            color: #8892b0;
+            font-style: italic;
+        }
+
+        .footer {
+            text-align: center;
+            margin-top: 30px;
+            padding: 20px;
+            color: #8892b0;
+            font-size: 0.9em;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #00d9ff;
+        }
+
+        .loading::after {
+            content: '...';
+            animation: dots 1.5s infinite;
+        }
+
+        @keyframes dots {
+            0%, 20% { content: '.'; }
+            40% { content: '..'; }
+            60%, 100% { content: '...'; }
+        }
+
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 1.5em;
+            }
+            
+            table {
+                font-size: 0.75em;
+            }
+            
+            th, td {
+                padding: 8px 5px;
+            }
+        }
+
+        .refresh-info {
+            text-align: right;
+            color: #8892b0;
+            font-size: 0.85em;
+            margin-bottom: 10px;
+        }
+
+        .uuid-short {
+            font-family: monospace;
+            font-size: 0.9em;
+            color: #8892b0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1>📊 TOUTES LES PAIRES D'ORDRES</h1>
+            <p class="subtitle">Bot de Trading HL-Spot • Vue d'ensemble complète</p>
+        </div>
+
+        <!-- Statistics Cards -->
+        <div class="stats">
+            <div class="stat-card">
+                <div class="label">Total Paires</div>
+                <div class="value" id="total-pairs">{{ total_pairs }}</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">En Attente d'Achat</div>
+                <div class="value" id="buy-count" style="color: #ff9800;">{{ buy_count }}</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">En Attente de Vente</div>
+                <div class="value" id="sell-count" style="color: #2196f3;">{{ sell_count }}</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">Complétées</div>
+                <div class="value" id="complete-count" style="color: #4caf50;">{{ complete_count }}</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">Gain Total</div>
+                <div class="value" id="total-gain" class="{% if total_gain >= 0 %}gain-positive{% else %}gain-negative{% endif %}">${{ "%.2f"|format(total_gain) }}</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">Taux de Réussite</div>
+                <div class="value" id="win-rate">{{ "%.1f"|format(win_rate) }}%</div>
+            </div>
+        </div>
+
+        <!-- Controls -->
+        <div class="controls">
+            <button class="btn" onclick="refreshData()">🔄 Actualiser</button>
+            <button class="btn" onclick="filterStatus('all')">📋 Toutes</button>
+            <button class="btn" onclick="filterStatus('Buy')">🟠 En Attente Achat</button>
+            <button class="btn" onclick="filterStatus('Sell')">🔵 En Attente Vente</button>
+            <button class="btn" onclick="filterStatus('Complete')">🟢 Complétées</button>
+        </div>
+
+        <div class="refresh-info" id="refresh-info">
+            Dernière mise à jour: <span id="last-update">{{ now }}</span>
+        </div>
+
+        <!-- Table Container -->
+        <div class="table-container">
+            <table id="orders-table">
+                <thead>
+                    <tr>
+                        <th>Index</th>
+                        <th>État de la Paire</th>
+                        <th>Qty BTC</th>
+                        <th>Qty USDC</th>
+                        <th>Buy Price</th>
+                        <th>Sell Price</th>
+                        <th>Gain %</th>
+                        <th>Gain $</th>
+                        <th>Buy ID</th>
+                        <th>Sell ID</th>
+                        <th>Offset</th>
+                        <th>Market</th>
+                        <th>UUID</th>
+                    </tr>
+                </thead>
+                <tbody id="orders-tbody">
+                    {% if pairs and pairs|length > 0 %}
+                        {% for pair in pairs %}
+                        <tr data-status="{{ pair.status }}">
+                            <td>{{ pair.index }}</td>
+                            <td>
+                                {% if pair.status == 'Buy' %}
+                                    <span class="status status-pending-buy">⏳ En Attente Achat</span>
+                                {% elif pair.status == 'Sell' %}
+                                    <span class="status status-awaiting-sell">📈 En Attente Vente</span>
+                                {% elif pair.status == 'Complete' %}
+                                    <span class="status status-complete">✅ Complétée</span>
+                                {% else %}
+                                    <span class="status">{{ pair.status }}</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ "%.5f"|format(pair.quantity_btc) }}</td>
+                            <td>{{ "%.2f"|format(pair.quantity_usdc) }}</td>
+                            <td>{{ "%.0f"|format(pair.buy_price_btc) }}</td>
+                            <td>{{ "%.0f"|format(pair.sell_price_btc) }}</td>
+                            <td class="{% if pair.gain_percent %}{% if pair.gain_percent > 0 %}gain-positive{% else %}gain-negative{% endif %}{% endif %}">
+                                {% if pair.gain_percent %}{{ "%.2f"|format(pair.gain_percent) }}%{% else %}-{% endif %}
+                            </td>
+                            <td class="{% if pair.gain_usdc %}{% if pair.gain_usdc > 0 %}gain-positive{% else %}gain-negative{% endif %}{% endif %}">
+                                {% if pair.gain_usdc %}{{ "%.2f"|format(pair.gain_usdc) }}${% else %}-{% endif %}
+                            </td>
+                            <td>{{ pair.buy_order_id or '-' }}</td>
+                            <td>{{ pair.sell_order_id or '-' }}</td>
+                            <td>{{ pair.offset_display or '-' }}</td>
+                            <td>{{ pair.market_type or '-' }}</td>
+                            <td><span class="uuid-short">{{ pair.uuid }}</span></td>
+                        </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr>
+                            <td colspan="13" class="no-data">Aucune donnée disponible</td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            <p>HL-Spot Trading Bot • Interface de visualisation des paires d'ordres</p>
+            <p>Auto-refresh: 30 secondes</p>
+            <p style="margin-top: 10px; font-size: 0.85em; color: #666;">
+                ℹ️ État de la paire: "En Attente Achat" = ordre d'achat pas encore rempli | "En Attente Vente" = achat rempli, en attente de vente | "Complétée" = cycle complet
+            </p>
+        </div>
+    </div>
+
+    <script>
+        let currentFilter = 'all';
+
+        function filterStatus(status) {
+            currentFilter = status;
+            const rows = document.querySelectorAll('tbody tr[data-status]');
+            
+            rows.forEach(row => {
+                if (status === 'all' || row.dataset.status === status) {
+                    row.style.display = '';
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+        }
+
+        function refreshData() {
+            location.reload();
+        }
+
+        function updateTimestamp() {
+            const now = new Date();
+            const timeStr = now.toLocaleTimeString('fr-FR');
+            document.getElementById('last-update').textContent = timeStr;
+        }
+
+        // Auto-refresh every 30 seconds
+        setInterval(refreshData, 30000);
+        
+        // Update timestamp
+        updateTimestamp();
+    </script>
+</body>
+</html>

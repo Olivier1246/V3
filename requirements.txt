@@ -1,0 +1,103 @@
+# ============================================
+# BOT DE TRADING HYPERLIQUID - DÉPENDANCES
+# Version 3.0 - Architecture Modulaire
+# ============================================
+# Installation : pip install -r requirements.txt
+# Mise à jour : pip install --upgrade -r requirements.txt
+# Vérification : pip check
+
+# ============================================
+# TRADING & BLOCKCHAIN
+# ============================================
+hyperliquid-python-sdk>=0.2.0    # SDK officiel Hyperliquid (API trading)
+eth-account>=0.11.0              # Gestion des comptes Ethereum/wallets
+ccxt>=4.4.0                      # Bibliothèque multi-exchange (optionnel)
+
+# ============================================
+# CONFIGURATION & ENVIRONNEMENT
+# ============================================
+python-dotenv>=1.0.1             # Chargement des variables d'environnement (.env)
+
+# ============================================
+# WEB & API
+# ============================================
+requests>=2.32.0                 # Requêtes HTTP pour API
+Flask>=3.0.3                     # Framework web pour dashboard
+Werkzeug>=3.0.3                  # Utilitaires WSGI pour Flask
+Jinja2>=3.1.4                    # Moteur de templates pour Flask
+
+# ============================================
+# BASE DE DONNÉES
+# ============================================
+SQLAlchemy>=2.0.34               # ORM pour gestion BDD (SQLite/PostgreSQL)
+
+# ============================================
+# ANALYSE DE DONNÉES & CALCULS
+# ============================================
+pandas>=2.2.0                    # Manipulation et analyse de données
+numpy>=1.26.0                    # Calculs scientifiques et moyennes mobiles
+
+# ============================================
+# OPTIONNEL : NOTIFICATIONS
+# ============================================
+# Décommenter pour activer les notifications Telegram avancées
+python-telegram-bot>=20.8      # Bot Telegram complet (alternative à requests)
+
+# ============================================
+# OPTIONNEL : EXPORTS & RAPPORTS
+# ============================================
+# Décommenter pour générer des rapports Excel
+openpyxl>=3.1.5                # Lecture/écriture Excel (.xlsx)
+ xlsxwriter>=3.2.0              # Écriture Excel avec formatage avancé
+
+# Décommenter pour des tableaux formatés en console
+tabulate>=0.9.0                # Affichage de tableaux ASCII
+
+# ============================================
+# OPTIONNEL : MONITORING & LOGS
+# ============================================
+# Décommenter pour monitoring avancé
+prometheus-client>=0.20.0      # Métriques Prometheus
+colorlog>=6.8.2                # Logs colorés en console
+
+# ============================================
+# OPTIONNEL : TESTS & QUALITÉ
+# ============================================
+# Décommenter pour tests et audits
+pytest>=8.3.0                  # Framework de tests
+pytest-cov>=5.0.0              # Coverage des tests
+black>=24.8.0                  # Formatage automatique du code
+flake8>=7.1.0                  # Linter Python
+mypy>=1.11.0                   # Type checking
+bandit>=1.7.9                  # Analyse de sécurité
+safety>=3.2.0                  # Audit des vulnérabilités
+
+# ============================================
+# OPTIONNEL : BASE DE DONNÉES AVANCÉE
+# ============================================
+# Décommenter pour utiliser PostgreSQL au lieu de SQLite
+# psycopg2-binary>=2.9.9         # Driver PostgreSQL
+# alembic>=1.13.0                # Migrations de schéma BDD
+
+# ============================================
+# NOTES IMPORTANTES
+# ============================================
+# 1. Versions minimales spécifiées avec >=
+# 2. Compatible Python 3.8+
+# 3. Testé sur Python 3.11 et 3.12
+# 4. Mise à jour régulière : pip list --outdated
+# 5. Après mise à jour : pytest (si tests activés)
+# 6. Vérifier compatibilité : pip check
+#
+# INSTALLATION RAPIDE :
+# python -m venv venv
+# source venv/bin/activate  # Linux/Mac
+# venv\Scripts\activate     # Windows
+# pip install --upgrade pip
+# pip install -r requirements.txt
+#
+# PROBLÈMES FRÉQUENTS :
+# - Si erreur numpy : pip install numpy==1.26.4
+# - Si erreur pandas : pip install pandas==2.2.2
+# - Si erreur Flask : pip install Flask==3.0.3
+# - Sur Windows : installer Visual C++ Build Tools si nécessaire

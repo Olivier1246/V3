@@ -578,7 +578,7 @@ Les contributions sont les bienvenues !
 
 ## 📞 Support
 
-- 📧 Email : support@example.com
+- 📧 Email : Olivier@cmails.eu
 - 💬 Discord : [Lien vers Discord]
 - 📚 Documentation : [Wiki du projet]
 - 🐛 Issues : [GitHub Issues]

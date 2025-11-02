@@ -333,6 +333,24 @@ class Database:
     # MÉTHODES EXISTANTES (inchangées)
     # ============================================
     
+    def update_buy_filled(self, pair_index: int) -> bool:
+        """🔄 MÉTHODE DE COMPATIBILITÉ pour bot_controller.py
+        
+        ⚠️ ATTENTION : Cette méthode ne met à jour QUE le statut.
+        Elle ne récupère PAS la quantité réelle depuis Hyperliquid.
+        
+        Pour une synchronisation complète avec quantité réelle, utilisez plutôt
+        sync_hyperliquid_orders.py qui appelle update_quantity_btc() + update_pair_status()
+        
+        Args:
+            pair_index: Index de la paire
+        
+        Returns:
+            bool: True si succès
+        """
+        # Simplement changer le statut à 'Sell'
+        return self.update_pair_status(pair_index, 'Sell')
+    
     def update_sell_order_id(self, pair_index: int, sell_order_id: str) -> bool:
         """Met à jour le sell_order_id d'une paire
         

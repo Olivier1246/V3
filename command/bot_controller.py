@@ -1,10 +1,12 @@
 """
 Module de contrôle principal du bot
-CORRECTIFS:
+
+✅ CORRECTIONS APPLIQUÉES:
 - Lock pour éviter synchronisations concurrentes
 - Vérification si get_open_orders() retourne None (erreur API)
+- Récupération de la QUANTITÉ RÉELLE depuis user_fills()
+- Mise à jour de la quantité BTC réelle dans la BDD
 - Ne pas marquer les ordres comme filled si erreur API
-- Meilleure gestion des erreurs
 """
 
 import time
@@ -31,7 +33,7 @@ class BotController:
     
     Responsabilités:
     - Lire la configuration depuis .env
-    - Synchroniser BDD avec Hyperliquid (Direction + Status)
+    - Synchroniser BDD avec Hyperliquid (Direction + Status + Quantité réelle)
     - Lancer 1 thread d'achat
     - Lancer 1 thread de vente
     - Gérer l'arrêt propre
@@ -77,7 +79,7 @@ class BotController:
         self.is_running = False
         self.sync_thread = None
         
-        # ⚠️ CORRECTIF: Lock pour éviter synchronisations concurrentes
+        # Lock pour éviter synchronisations concurrentes
         self.sync_lock = threading.Lock()
         self.last_sync_time = None
         self.sync_failure_count = 0
@@ -155,20 +157,50 @@ class BotController:
         if self.telegram:
             self.telegram.send_bot_stopped()
     
-    def sync_with_hyperliquid(self):
-        """Synchronise la BDD avec l'état réel sur Hyperliquid
+    def _get_filled_quantity(self, order_id: str) -> float:
+        """✅ NOUVELLE MÉTHODE : Récupère la quantité RÉELLE remplie pour un ordre
         
-        CORRECTIFS:
+        Args:
+            order_id: ID de l'ordre
+            
+        Returns:
+            float: Quantité réelle remplie (0 si erreur)
+        """
+        try:
+            # Récupérer l'historique des fills pour cet utilisateur
+            user_fills = self.trading_engine.info.user_fills(self.trading_engine.account_address)
+            
+            if not user_fills:
+                return 0
+            
+            # Rechercher tous les fills pour cet ordre
+            total_filled = 0
+            for fill in user_fills:
+                if str(fill.get('oid')) == str(order_id):
+                    total_filled += float(fill.get('sz', 0))
+            
+            return total_filled
+            
+        except Exception as e:
+            self.logger.error(f"❌ Erreur récupération quantité filled: {e}")
+            return 0
+    
+    def sync_with_hyperliquid(self):
+        """✅ SYNCHRONISE la BDD avec l'état réel sur Hyperliquid
+        
+        CORRECTIONS APPLIQUÉES:
         - Lock pour éviter synchronisations concurrentes
         - Vérification si get_open_orders() retourne None (erreur API)
+        - Récupération de la QUANTITÉ RÉELLE depuis user_fills()
+        - Mise à jour de la quantité BTC réelle dans la BDD
         - Ne pas marquer les ordres comme filled si erreur API
         
-        Vérifie Direction + Status pour chaque ordre:
+        Vérifie Direction + Status + Quantité réelle pour chaque ordre:
         - Buy + Open = Paire en attente d'achat (status='Buy')
-        - Buy + Filled + Sell + Open = Paire en attente de vente (status='Sell')
-        - Buy + Filled + Sell + Filled = Paire complétée (status='Complete')
+        - Buy + Filled = Mise à jour quantité réelle + status='Sell'
+        - Sell + Filled = Paire complétée (status='Complete')
         """
-        # ⚠️ CORRECTIF: Utiliser un lock pour éviter les sync concurrentes
+        # Utiliser un lock pour éviter les sync concurrentes
         if not self.sync_lock.acquire(blocking=False):
             self.logger.warning("⚠️  Synchronisation déjà en cours, skip")
             return
@@ -180,7 +212,7 @@ class BotController:
             # Récupérer les ordres ouverts (Open orders)
             open_orders = self.trading_engine.get_open_orders()
             
-            # ⚠️ CORRECTIF CRITIQUE: Vérifier si la récupération a échoué
+            # CORRECTIF CRITIQUE: Vérifier si la récupération a échoué
             if open_orders is None:
                 self.logger.error("❌ Impossible de récupérer les ordres ouverts (erreur API)")
                 self.logger.error("   La synchronisation est abandonnée pour éviter les erreurs")
@@ -209,19 +241,14 @@ class BotController:
                 
                 open_orders_map[order_id] = {
                     'direction': direction,
-                    'status': 'Open',
                     'order': order
                 }
-                self.logger.info(f"   - Ordre {order_id}: {direction} (Open)")
             
             # Vérifier les paires en attente d'achat (status='Buy')
             pending_buy = self.database.get_pending_buy_orders()
             self.logger.info(f"📊 {len(pending_buy)} paire(s) en attente d'achat dans BDD")
             
             for pair in pending_buy:
-                if not pair.buy_order_id:
-                    continue
-                
                 buy_order_id = str(pair.buy_order_id)
                 
                 # Vérifier si l'ordre d'achat est encore ouvert
@@ -234,7 +261,34 @@ class BotController:
                 
                 # L'ordre n'est plus ouvert = il est Filled
                 self.logger.info(f"✅ Ordre d'achat {buy_order_id} rempli (Filled)")
-                self.database.update_buy_filled(pair.index)
+                
+                # ✅ CORRECTION : Récupérer la quantité RÉELLE remplie
+                filled_quantity = self._get_filled_quantity(buy_order_id)
+                
+                if filled_quantity > 0:
+                    self.logger.info(f"   Quantité calculée: {pair.quantity_btc:.8f} BTC")
+                    self.logger.info(f"   Quantité réelle: {filled_quantity:.8f} BTC")
+                    self.logger.info(f"   Différence (frais maker): {pair.quantity_btc - filled_quantity:.8f} BTC")
+                    
+                    # ✅ CORRECTION : Mettre à jour la quantité réelle dans la BDD
+                    self.database.update_quantity_btc(pair.index, filled_quantity)
+                    
+                    # Notification Telegram
+                    if self.telegram and self.config.telegram_on_order_filled:
+                        try:
+                            self.telegram.send_buy_order_filled(
+                                order_id=buy_order_id,
+                                price=pair.buy_price_btc,
+                                size=filled_quantity
+                            )
+                        except Exception as e:
+                            self.logger.error(f"❌ Erreur notification: {e}")
+                else:
+                    self.logger.warning(f"⚠️  Impossible de récupérer la quantité réelle pour {buy_order_id}")
+                    self.logger.warning(f"   Utilisation de la quantité calculée: {pair.quantity_btc:.8f} BTC")
+                
+                # Mettre à jour le statut
+                self.database.update_pair_status(pair.index, 'Sell')
             
             # Vérifier les paires en attente de vente (status='Sell')
             pending_sell = self.database.get_pending_sell_orders()
@@ -257,6 +311,40 @@ class BotController:
                 
                 # L'ordre n'est plus ouvert = il est Filled
                 self.logger.info(f"✅ Ordre de vente {sell_order_id} rempli (Filled)")
+                
+                # Calculer le profit (avec frais maker)
+                maker_fee_percent = self.config.maker_fee / 100
+                
+                buy_cost = pair.buy_price_btc * pair.quantity_btc
+                sell_revenue = pair.sell_price_btc * pair.quantity_btc
+                gross_profit = sell_revenue - buy_cost
+                
+                buy_fee = buy_cost * maker_fee_percent
+                sell_fee = sell_revenue * maker_fee_percent
+                total_fees = buy_fee + sell_fee
+                
+                net_profit = gross_profit - total_fees
+                profit_percent = ((pair.sell_price_btc - pair.buy_price_btc) / pair.buy_price_btc) * 100
+                
+                self.logger.info(f"💰 Profit brut: {gross_profit:.2f}$")
+                self.logger.info(f"💰 Frais maker: {total_fees:.4f}$")
+                self.logger.info(f"💰 Profit net: {net_profit:.2f}$ ({profit_percent:+.2f}%)")
+                
+                # Notification Telegram
+                if self.telegram and self.config.telegram_on_order_filled:
+                    try:
+                        self.telegram.send_sell_order_filled(
+                            order_id=sell_order_id,
+                            price=pair.sell_price_btc,
+                            size=pair.quantity_btc,
+                            buy_price=pair.buy_price_btc,
+                            profit=net_profit,
+                            profit_percent=profit_percent
+                        )
+                    except Exception as e:
+                        self.logger.error(f"❌ Erreur notification: {e}")
+                
+                # Marquer comme complete
                 self.database.complete_order_pair(pair.index)
             
             sync_duration = time.time() - sync_start_time
@@ -269,7 +357,7 @@ class BotController:
             self.sync_failure_count += 1
             
         finally:
-            # ⚠️ CORRECTIF: Toujours libérer le lock
+            # Toujours libérer le lock
             self.sync_lock.release()
     
     def _sync_loop(self):

@@ -2,10 +2,9 @@
 Module de synchronisation des ordres Hyperliquid
 Vérifie le statut réel des ordres et met à jour la BDD
 
-🆕 NOUVELLE LOGIQUE:
-- Analyse par Order ID + Time (le plus récent)
-- Prend le Status le plus récent depuis Order History
-- Met à jour la BDD en conséquence
+✅ CORRECTIONS APPLIQUÉES:
+- Met à jour la quantité BTC RÉELLE après fill de l'ordre d'achat
+- Prend en compte les frais MAKER uniquement (mode spot limit)
 """
 
 import time
@@ -181,7 +180,10 @@ class OrderSynchronizer:
             }
     
     def _check_buy_orders(self):
-        """🆕 Vérifie les ordres d'achat avec la nouvelle logique"""
+        """🆕 Vérifie les ordres d'achat avec la nouvelle logique
+        
+        ✅ CORRECTION: Met à jour la quantité BTC réelle après fill
+        """
         
         # Récupérer les paires en attente d'achat
         buy_pairs = self.database.get_pairs_by_status('Buy')
@@ -210,28 +212,29 @@ class OrderSynchronizer:
                     # ✅ Ordre rempli - Passer en mode Sell
                     total_filled = order_status['size']
                     
-                    # Vérifier si la quantité correspond
-                    if total_filled >= pair.quantity_btc * 0.99:  # Tolérance 1%
-                        self.logger.info(f"✅ Ordre d'achat {buy_order_id} REMPLI")
-                        self.logger.info(f"   Quantité: {total_filled:.8f} BTC")
-                        
-                        # Mettre à jour le statut dans la BDD
-                        self.database.update_pair_status(pair.index, 'Sell')
-                        self.logger.info(f"✅ Paire {pair.index} - Status mis à jour: Buy -> Sell")
-                        
-                        # Notification Telegram
-                        if self.telegram and self.config.telegram_on_order_filled:
-                            try:
-                                self.telegram.send_buy_order_filled(
-                                    order_id=buy_order_id,
-                                    price=pair.buy_price_btc,
-                                    size=total_filled
-                                )
-                            except Exception as e:
-                                self.logger.error(f"❌ Erreur notification: {e}")
-                    else:
-                        self.logger.warning(f"⚠️  Ordre {buy_order_id} partiellement rempli")
-                        self.logger.warning(f"   Attendu: {pair.quantity_btc:.8f}, Rempli: {total_filled:.8f}")
+                    # ✅ CORRECTION: Mettre à jour la quantité BTC RÉELLE dans la BDD
+                    self.logger.info(f"✅ Ordre d'achat {buy_order_id} REMPLI")
+                    self.logger.info(f"   Quantité calculée: {pair.quantity_btc:.8f} BTC")
+                    self.logger.info(f"   Quantité réelle: {total_filled:.8f} BTC")
+                    self.logger.info(f"   Différence (frais maker): {pair.quantity_btc - total_filled:.8f} BTC")
+                    
+                    # 1️⃣ Mettre à jour la quantité BTC réelle
+                    self.database.update_quantity_btc(pair.index, total_filled)
+                    
+                    # 2️⃣ Mettre à jour le statut
+                    self.database.update_pair_status(pair.index, 'Sell')
+                    self.logger.info(f"✅ Paire {pair.index} - Status mis à jour: Buy -> Sell")
+                    
+                    # Notification Telegram
+                    if self.telegram and self.config.telegram_on_order_filled:
+                        try:
+                            self.telegram.send_buy_order_filled(
+                                order_id=buy_order_id,
+                                price=pair.buy_price_btc,
+                                size=total_filled
+                            )
+                        except Exception as e:
+                            self.logger.error(f"❌ Erreur notification: {e}")
                 
                 elif status == 'cancelled':
                     # ⚠️ Ordre annulé
@@ -289,14 +292,26 @@ class OrderSynchronizer:
                         self.logger.info(f"✅ Ordre de vente {sell_order_id} REMPLI")
                         self.logger.info(f"   Quantité: {total_filled:.8f} BTC")
                         
-                        # Calculer le profit
-                        profit = (pair.sell_price_btc - pair.buy_price_btc) * total_filled
+                        # Calculer le profit (AVEC frais maker uniquement)
+                        maker_fee_percent = self.config.maker_fee / 100
+                        
+                        buy_cost = pair.buy_price_btc * pair.quantity_btc
+                        sell_revenue = pair.sell_price_btc * pair.quantity_btc
+                        gross_profit = sell_revenue - buy_cost
+                        
+                        buy_fee = buy_cost * maker_fee_percent
+                        sell_fee = sell_revenue * maker_fee_percent
+                        total_fees = buy_fee + sell_fee
+                        
+                        net_profit = gross_profit - total_fees
                         profit_percent = ((pair.sell_price_btc - pair.buy_price_btc) / pair.buy_price_btc) * 100
                         
                         # Mettre à jour le statut dans la BDD
                         self.database.update_pair_status(pair.index, 'Complete')
                         self.logger.info(f"✅ Paire {pair.index} - Status mis à jour: Sell -> Complete")
-                        self.logger.info(f"💰 Profit: {profit:.2f}$ ({profit_percent:+.2f}%)")
+                        self.logger.info(f"💰 Profit brut: {gross_profit:.2f}$")
+                        self.logger.info(f"💰 Frais maker: {total_fees:.4f}$")
+                        self.logger.info(f"💰 Profit net: {net_profit:.2f}$ ({profit_percent:+.2f}%)")
                         
                         # Notification Telegram
                         if self.telegram and self.config.telegram_on_order_filled:
@@ -306,7 +321,7 @@ class OrderSynchronizer:
                                     price=pair.sell_price_btc,
                                     size=total_filled,
                                     buy_price=pair.buy_price_btc,
-                                    profit=profit,
+                                    profit=net_profit,
                                     profit_percent=profit_percent
                                 )
                             except Exception as e:

@@ -1,6 +1,11 @@
 """
 Module de gestion des ORDRES DE VENTE
-Logique: Surveiller ordres d'achat exécutés -> Placer ordre de vente -> Surveiller exécution -> Mettre à jour BDD
+Logique: Surveiller ordres d'achat exécutés -> Placer ordre -> Surveiller exécution -> Mettre à jour BDD
+
+✅ CORRECTIONS APPLIQUÉES:
+- Utilise la quantité BTC RÉELLE de la BDD (déjà ajustée après frais d'achat)
+- Vérifie que le solde BTC disponible est suffisant
+- Mode spot limit: ordres maker uniquement, pas besoin d'ajuster pour les frais de vente
 """
 
 import time
@@ -161,40 +166,45 @@ class SellOrderManager:
             if not success:
                 self.failed_pairs[pair_index] = datetime.now(timezone.utc)
     
-    def _check_buy_order_status(self, pair):
-        """Vérifie le statut de l'ordre d'achat
-        
-        Note: Cette méthode est actuellement simplifiée. La synchronisation
-        du statut des ordres se fait via sync_hyperliquid_orders.py qui met
-        à jour la base de données automatiquement (status Buy -> Sell).
-        
-        Cette méthode ne fait rien car la sync est gérée ailleurs.
-        """
-        # La vérification du statut est faite par sync_hyperliquid_orders.py
-        # qui met à jour automatiquement le status de 'Buy' à 'Sell' quand l'ordre est filled
-        pass
-    
     def _place_sell_order_for_pair(self, pair) -> bool:
-        """Place un ordre de vente pour une paire dont l'achat est exécuté
+        """✅ Place un ordre de vente pour une paire dont l'achat est exécuté
+        
+        NOUVELLE LOGIQUE (mode spot limit):
+        1. Prendre la quantité BTC de la BDD (déjà ajustée après frais d'achat)
+        2. Vérifier que le solde BTC disponible est >= quantité BTC
+        3. Placer l'ordre de vente avec cette quantité exacte
+        
+        Note: Pas besoin d'ajuster pour les frais maker de vente car :
+        - On vend la quantité BTC qu'on possède réellement
+        - Les frais maker seront déduits du montant USDC reçu, pas de la quantité BTC
         
         Returns:
             bool: True si succès, False si échec
         """
         pair_index = pair.index
         sell_price = pair.sell_price_btc
-        quantity_btc = pair.quantity_btc
+        quantity_btc = pair.quantity_btc  # ✅ Quantité RÉELLE (déjà ajustée par sync)
         buy_order_id = pair.buy_order_id
         market_type = getattr(pair, 'market_type', 'UNKNOWN')
         
-        # ⚠️ VÉRIFICATION CRITIQUE : Vérifier le solde BTC disponible
+        # ✅ VÉRIFICATION CRITIQUE : Vérifier le solde BTC disponible
         available_btc = self.trading_engine.get_balance("BTC", available_only=True)
         
-        if available_btc < quantity_btc * 0.99:  # Marge de 1% pour les arrondis
-            self.logger.warning(f"⚠️ Solde BTC insuffisant pour paire {pair_index}")
-            self.logger.warning(f"   Disponible: {available_btc:.8f} BTC")
-            self.logger.warning(f"   Requis: {quantity_btc:.8f} BTC")
-            self.logger.warning(f"   Ordre d'achat {buy_order_id} peut ne pas être rempli encore")
+        self.logger.info(f"\n{'='*60}")
+        self.logger.info(f"🔵 VÉRIFICATION PAIRE {pair_index}")
+        self.logger.info(f"{'='*60}")
+        self.logger.info(f"   Quantité BTC requise: {quantity_btc:.8f} BTC")
+        self.logger.info(f"   Solde BTC disponible: {available_btc:.8f} BTC")
+        
+        # Vérifier avec une tolérance de 0.1% pour les arrondis
+        if available_btc < quantity_btc * 0.999:
+            self.logger.warning(f"⚠️  Solde BTC insuffisant pour paire {pair_index}")
+            self.logger.warning(f"   Manquant: {(quantity_btc - available_btc):.8f} BTC")
+            self.logger.warning(f"   L'ordre d'achat {buy_order_id} n'est peut-être pas encore totalement rempli")
+            self.logger.warning(f"   Réessai dans {self.retry_delay} secondes")
             return False
+        
+        self.logger.info(f"✅ Solde suffisant ({available_btc:.8f} >= {quantity_btc:.8f})")
         
         # Vérifier que la quantité est valide
         if quantity_btc <= 0:
@@ -213,10 +223,10 @@ class SellOrderManager:
         self.logger.info(f"   Paire: {pair_index}")
         self.logger.info(f"   Ordre d'achat: {buy_order_id}")
         self.logger.info(f"   Marché: {market_type}")
-        self.logger.info(f"   Prix: {sell_price:.2f}$")
-        self.logger.info(f"   Quantité: {quantity_btc:.8f} BTC")
-        self.logger.info(f"   Valeur: {order_value:.2f} USDC")
-        self.logger.info(f"   Solde BTC dispo: {available_btc:.8f} BTC")
+        self.logger.info(f"   Prix vente: {sell_price:.2f}$")
+        self.logger.info(f"   Quantité: {quantity_btc:.8f} BTC (quantité RÉELLE)")
+        self.logger.info(f"   Valeur estimée: {order_value:.2f} USDC")
+        self.logger.info(f"   Note: Frais maker seront déduits du montant USDC reçu")
         self.logger.info(f"{'='*60}")
         
         # Placer l'ordre via le trading engine
@@ -238,6 +248,7 @@ class SellOrderManager:
                     order_id=sell_order_id,
                     price=sell_price,
                     size=quantity_btc,
+                    buy_price=pair.buy_price_btc,
                     market_type=market_type,
                     usdc_amount=order_value
                 )
@@ -252,17 +263,6 @@ class SellOrderManager:
         except Exception as e:
             self.logger.error(f"❌ Erreur mise à jour BDD: {e}")
             return False
-    
-    def _check_sell_order_status(self, pair):
-        """Vérifie le statut de l'ordre de vente sur Hyperliquid
-        
-        Note: Cette méthode est actuellement simplifiée. La synchronisation
-        du statut des ordres se fait via sync_hyperliquid_orders.py qui met
-        à jour la base de données.
-        """
-        # La vérification du statut est faite par sync_hyperliquid_orders.py
-        # qui met à jour le status dans la BDD (Buy -> Sell -> Complete)
-        pass
     
     def get_status(self) -> Dict:
         """Retourne le statut du gestionnaire de ventes"""

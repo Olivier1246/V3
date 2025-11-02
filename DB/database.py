@@ -1,6 +1,9 @@
 """
 Module de gestion de la base de données
-Structure simplifiée selon les nouvelles spécifications
+✅ CORRECTIONS APPLIQUÉES:
+- Ajout méthode update_quantity_btc() pour mettre à jour la quantité réelle après fill
+- Ajout méthode update_pair_status() pour changer le statut
+- Ajout méthode get_pairs_by_status() pour récupérer les paires par statut
 """
 
 from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, text
@@ -41,7 +44,7 @@ class OrderPair(Base):
     # Gain % = calculer le gain en %
     gain_percent = Column(Float, nullable=True)
     
-    # Gain $ = calculer le gain en $ moins les frais taker
+    # Gain $ = calculer le gain en $ moins les frais maker
     gain_usdc = Column(Float, nullable=True)
     
     # Buy Order ID = récupéré sur Hyperliquid
@@ -72,16 +75,14 @@ class Database:
         self.config = config
         
         # Construire le chemin de la base de données
-        # S'assurer qu'il est toujours dans le dossier DB
         db_file = getattr(config, 'db_file', 'DB/trading_history.db')
         
         # Si le chemin ne commence pas par DB/, le forcer
         if not db_file.startswith('DB/') and not db_file.startswith('DB\\'):
-            # Extraire juste le nom du fichier
             db_filename = os.path.basename(db_file)
             db_file = os.path.join('DB', db_filename)
         
-        # Convertir en chemin absolu pour éviter toute ambiguïté
+        # Convertir en chemin absolu
         self.db_file = os.path.abspath(db_file)
         
         self._engine = None
@@ -95,21 +96,13 @@ class Database:
     def _initialize_database(self):
         """Initialise la base avec configuration SQLite optimisée"""
         try:
-            # Extraire et créer le répertoire de la base de données
             db_dir = os.path.dirname(self.db_file)
             
             if db_dir:
                 print(f"📁 Répertoire base de données: {db_dir}")
-                
                 if not os.path.exists(db_dir):
                     print(f"📁 Création du répertoire: {db_dir}")
                     os.makedirs(db_dir, exist_ok=True)
-                else:
-                    print(f"✅ Répertoire existant: {db_dir}")
-            
-            # Vérifier que le fichier sera bien dans le dossier DB
-            if 'DB' not in self.db_file:
-                print(f"⚠️  ATTENTION: Le chemin de la base ne contient pas 'DB': {self.db_file}")
             
             connection_string = f"sqlite:///{self.db_file}"
             print(f"🔗 Connexion SQLite: {connection_string}")
@@ -139,12 +132,6 @@ class Database:
             
             self._initialized = True
             print("✅ Base de données initialisée avec succès")
-            
-            # Vérifier que le fichier existe bien là où on l'attend
-            if os.path.exists(self.db_file):
-                print(f"✅ Fichier base de données créé: {self.db_file}")
-            else:
-                print(f"⚠️  Fichier base de données non trouvé: {self.db_file}")
             
         except Exception as e:
             print(f"❌ Erreur initialisation base de données: {e}")
@@ -209,41 +196,38 @@ class Database:
         """Crée une nouvelle paire d'ordres avec un ordre d'achat
         
         Args:
-            data: Dictionnaire contenant:
-                - quantity_usdc: Montant en USDC
-                - quantity_btc: Quantité en BTC
-                - buy_price_btc: Prix d'achat
-                - sell_price_btc: Prix de vente cible
-                - buy_order_id: ID de l'ordre sur Hyperliquid
-                - market_type: Type de marché (BULL, BEAR, RANGE)
-                - offset_display: Affichage des offsets
+            data: dict contenant:
+                - quantity_usdc: float
+                - quantity_btc: float
+                - buy_price_btc: float
+                - sell_price_btc: float
+                - buy_order_id: str
+                - market_type: str (optionnel)
+                - offset_display: str (optionnel)
         
         Returns:
-            Index de la paire créée
+            int: Index de la paire créée
         """
-        def _create(session, order_data):
-            # Générer UUID
-            order_uuid = str(uuid_lib.uuid4())
-            
-            # Créer la paire
-            pair = OrderPair(
+        def _create(session, pair_data):
+            new_pair = OrderPair(
                 status='Buy',
-                quantity_usdc=order_data['quantity_usdc'],
-                quantity_btc=order_data['quantity_btc'],
-                buy_price_btc=order_data['buy_price_btc'],
-                sell_price_btc=order_data['sell_price_btc'],
-                buy_order_id=order_data.get('buy_order_id'),
-                market_type=order_data.get('market_type'),
-                offset_display=order_data.get('offset_display'),
-                uuid=order_uuid,
-                symbol=order_data.get('symbol', 'BTC')
+                quantity_usdc=pair_data['quantity_usdc'],
+                quantity_btc=pair_data['quantity_btc'],
+                buy_price_btc=pair_data['buy_price_btc'],
+                sell_price_btc=pair_data['sell_price_btc'],
+                buy_order_id=pair_data['buy_order_id'],
+                market_type=pair_data.get('market_type'),
+                offset_display=pair_data.get('offset_display'),
+                uuid=str(uuid_lib.uuid4()),
+                symbol=self.config.symbol
             )
             
-            session.add(pair)
+            session.add(new_pair)
             session.flush()
             
-            print(f"✅ Nouvelle paire créée - Index: {pair.index}, UUID: {order_uuid[:8]}")
-            return pair.index
+            print(f"✅ Paire créée - Index: {new_pair.index}")
+            
+            return new_pair.index
         
         try:
             return self.safe_execute(_create, data)
@@ -251,76 +235,142 @@ class Database:
             print(f"❌ Erreur création paire: {e}")
             raise
     
-    def update_buy_filled(self, index: int) -> bool:
-        """Marque un ordre d'achat comme rempli"""
-        def _update(session, pair_index):
-            pair = session.query(OrderPair).filter_by(index=pair_index).first()
-            if pair:
-                pair.buy_filled_at = datetime.now(timezone.utc)
-                pair.status = 'Sell'  # Prêt pour la vente
-                session.flush()
-                print(f"✅ Paire {pair_index} - Achat rempli, status -> Sell")
-                return True
-            return False
-        
-        try:
-            return self.safe_execute(_update, index)
-        except Exception as e:
-            print(f"❌ Erreur update buy_filled: {e}")
-            return False
+    # ============================================
+    # 🆕 NOUVELLES MÉTHODES POUR GÉRER LES QUANTITÉS RÉELLES
+    # ============================================
     
-    def update_sell_order(self, index: int, sell_order_id: str) -> bool:
-        """Met à jour une paire avec l'ID de l'ordre de vente"""
-        def _update(session, pair_index, order_id):
-            pair = session.query(OrderPair).filter_by(index=pair_index).first()
-            if pair:
-                pair.sell_order_id = order_id
-                pair.sell_placed_at = datetime.now(timezone.utc)
-                session.flush()
-                print(f"✅ Paire {pair_index} - Ordre de vente placé: {order_id}")
-                return True
-            return False
+    def update_quantity_btc(self, pair_index: int, new_quantity_btc: float) -> bool:
+        """🆕 Met à jour la quantité BTC réelle après fill de l'ordre d'achat
         
-        try:
-            return self.safe_execute(_update, index, sell_order_id)
-        except Exception as e:
-            print(f"❌ Erreur update sell_order: {e}")
-            return False
-
-    def update_sell_order_id(self, pair_index: int, sell_order_id: str):
-        """
-        Met à jour l'ID de l'ordre de vente pour une paire d'ordres
+        Cette méthode est appelée par sync_hyperliquid_orders.py après qu'un ordre
+        d'achat soit rempli pour enregistrer la quantité RÉELLE reçue (après frais maker).
         
         Args:
-            pair_index: Index de la paire dans la base de données
-            sell_order_id: ID de l'ordre de vente sur Hyperliquid
+            pair_index: Index de la paire à mettre à jour
+            new_quantity_btc: Quantité BTC réelle reçue après frais
+        
+        Returns:
+            bool: True si succès, False sinon
         """
+        def _update(session, index, quantity):
+            pair = session.query(OrderPair).filter_by(index=index).first()
+            if not pair:
+                raise ValueError(f"Paire {index} introuvable")
+            
+            old_quantity = pair.quantity_btc
+            pair.quantity_btc = quantity
+            
+            session.flush()
+            
+            print(f"✅ Quantité BTC mise à jour pour paire {index}")
+            print(f"   Ancienne: {old_quantity:.8f} BTC")
+            print(f"   Nouvelle: {quantity:.8f} BTC")
+            print(f"   Différence: {quantity - old_quantity:.8f} BTC (frais maker)")
+            
+            return True
+        
         try:
-            with self.get_connection() as conn:
-                cursor = conn.cursor()
-                
-                cursor.execute("""
-                    UPDATE order_pairs 
-                    SET sell_order_id = ?
-                    WHERE id = ?
-                """, (sell_order_id, pair_index))
-                
-                conn.commit()
-                
-                if cursor.rowcount == 0:
-                    raise ValueError(f"Aucune paire trouvée avec l'index {pair_index}")
-                    
-                return True
-                
+            return self.safe_execute(_update, pair_index, new_quantity_btc)
         except Exception as e:
-            raise Exception(f"Erreur lors de la mise à jour du sell_order_id: {e}")
+            print(f"❌ Erreur mise à jour quantité BTC: {e}")
+            return False
+    
+    def update_pair_status(self, pair_index: int, new_status: str) -> bool:
+        """🆕 Met à jour le statut d'une paire
+        
+        Args:
+            pair_index: Index de la paire
+            new_status: Nouveau statut ('Buy', 'Sell', 'Complete')
+        
+        Returns:
+            bool: True si succès, False sinon
+        """
+        def _update(session, index, status):
+            pair = session.query(OrderPair).filter_by(index=index).first()
+            if not pair:
+                raise ValueError(f"Paire {index} introuvable")
+            
+            old_status = pair.status
+            pair.status = status
+            
+            # Mettre à jour les timestamps selon le statut
+            if status == 'Sell' and not pair.buy_filled_at:
+                pair.buy_filled_at = datetime.now(timezone.utc)
+            elif status == 'Complete' and not pair.completed_at:
+                pair.completed_at = datetime.now(timezone.utc)
+            
+            session.flush()
+            
+            print(f"✅ Statut mis à jour pour paire {index}: {old_status} -> {status}")
+            
+            return True
+        
+        try:
+            return self.safe_execute(_update, pair_index, new_status)
+        except Exception as e:
+            print(f"❌ Erreur mise à jour statut: {e}")
+            return False
+    
+    def get_pairs_by_status(self, status: str):
+        """🆕 Récupère toutes les paires ayant un statut donné
+        
+        Args:
+            status: Statut à filtrer ('Buy', 'Sell', 'Complete')
+        
+        Returns:
+            list: Liste des paires
+        """
+        def _get(session, pair_status):
+            return session.query(OrderPair).filter_by(status=pair_status).all()
+        
+        try:
+            return self.safe_execute(_get, status)
+        except Exception as e:
+            print(f"❌ Erreur récupération paires par statut: {e}")
+            return []
+    
+    # ============================================
+    # MÉTHODES EXISTANTES (inchangées)
+    # ============================================
+    
+    def update_sell_order_id(self, pair_index: int, sell_order_id: str) -> bool:
+        """Met à jour le sell_order_id d'une paire
+        
+        Args:
+            pair_index: Index de la paire
+            sell_order_id: ID de l'ordre de vente
+        
+        Returns:
+            bool: True si succès
+        """
+        def _update(session, index, order_id):
+            pair = session.query(OrderPair).filter_by(index=index).first()
+            if not pair:
+                raise ValueError(f"Paire {index} introuvable")
+            
+            pair.sell_order_id = order_id
+            pair.sell_placed_at = datetime.now(timezone.utc)
+            
+            session.flush()
+            
+            print(f"✅ sell_order_id mis à jour pour paire {index}: {order_id}")
+            
+            return True
+        
+        try:
+            return self.safe_execute(_update, pair_index, sell_order_id)
+        except Exception as e:
+            print(f"❌ Erreur mise à jour sell_order_id: {e}")
+            return False
 
     def complete_order_pair(self, index: int, sell_price_actual: float = None) -> bool:
         """Marque une paire comme complétée et calcule les gains
         
+        ✅ CORRECTION: Utilise les frais MAKER uniquement (mode spot limit)
+        
         Args:
             index: Index de la paire
-            sell_price_actual: Prix de vente réel (optionnel, sinon utilise sell_price_btc)
+            sell_price_actual: Prix de vente réel (optionnel)
         """
         def _complete(session, pair_index, actual_price):
             pair = session.query(OrderPair).filter_by(index=pair_index).first()
@@ -335,10 +385,10 @@ class Database:
             sell_revenue = sell_price * pair.quantity_btc
             gross_profit = sell_revenue - buy_cost
             
-            # Frais taker (récupérés depuis config)
-            taker_fee_percent = self.config.taker_fee / 100
-            buy_fee = buy_cost * taker_fee_percent
-            sell_fee = sell_revenue * taker_fee_percent
+            # ✅ CORRECTION: Frais MAKER uniquement (pas de taker en spot limit)
+            maker_fee_percent = self.config.maker_fee / 100
+            buy_fee = buy_cost * maker_fee_percent
+            sell_fee = sell_revenue * maker_fee_percent
             total_fees = buy_fee + sell_fee
             
             # Profit net
@@ -354,8 +404,9 @@ class Database:
             session.flush()
             
             print(f"✅ Paire {pair_index} complétée")
-            print(f"   Gain: {net_profit:.2f}$ ({profit_percent:.2f}%)")
-            print(f"   Frais: {total_fees:.4f}$")
+            print(f"   Gain brut: {gross_profit:.2f}$")
+            print(f"   Frais maker: {total_fees:.4f}$")
+            print(f"   Gain net: {net_profit:.2f}$ ({profit_percent:.2f}%)")
             
             return True
         
@@ -367,25 +418,11 @@ class Database:
     
     def get_pending_buy_orders(self):
         """Récupère les paires en attente de remplissage d'achat (status='Buy')"""
-        def _get(session):
-            return session.query(OrderPair).filter_by(status='Buy').all()
-        
-        try:
-            return self.safe_execute(_get)
-        except Exception as e:
-            print(f"❌ Erreur récupération pending buy: {e}")
-            return []
+        return self.get_pairs_by_status('Buy')
     
     def get_pending_sell_orders(self):
         """Récupère les paires prêtes pour la vente (status='Sell')"""
-        def _get(session):
-            return session.query(OrderPair).filter_by(status='Sell').all()
-        
-        try:
-            return self.safe_execute(_get)
-        except Exception as e:
-            print(f"❌ Erreur récupération pending sell: {e}")
-            return []
+        return self.get_pairs_by_status('Sell')
     
     def get_all_pairs(self, limit: int = 100):
         """Récupère toutes les paires"""
@@ -458,9 +495,7 @@ class Database:
             return {}
     
     def get_active_order_pairs(self):
-        """Récupère toutes les paires actives (Buy et Sell)
-        Alias pour la compatibilité avec web_interface.py
-        """
+        """Récupère toutes les paires actives (Buy et Sell)"""
         def _get(session):
             return session.query(OrderPair).filter(
                 OrderPair.status.in_(['Buy', 'Sell'])
@@ -473,24 +508,11 @@ class Database:
             return []
     
     def get_market_analysis_history(self, limit: int = 100):
-        """Récupère l'historique des analyses de marché
-        
-        Note: Cette méthode retourne une liste vide car l'architecture actuelle
-        ne stocke pas l'historique des analyses de marché dans la base de données.
-        Les analyses sont effectuées en temps réel par MarketAnalyzer.
-        
-        Pour l'interface web, utilisez plutôt:
-        - market_analyzer.analyze_market() pour les données temps réel
-        - Ou ajoutez une table MarketAnalysis si vous souhaitez persister l'historique
-        """
-        # Retourne une liste vide pour éviter les erreurs
-        # L'interface web doit utiliser le MarketAnalyzer directement
+        """Récupère l'historique des analyses de marché"""
         return []
     
     def get_recent_trades(self, limit: int = 20):
-        """Récupère les trades récents (paires complétées)
-        Alias pour get_all_pairs avec filtre sur status='Complete'
-        """
+        """Récupère les trades récents (paires complétées)"""
         def _get(session, trade_limit):
             return session.query(OrderPair).filter_by(
                 status='Complete'

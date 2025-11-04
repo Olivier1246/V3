@@ -89,11 +89,13 @@ class OrderSynchronizer:
     def _sync_orders(self):
         """Synchronise tous les ordres actifs"""
         # Vérifier les ordres d'achat
-        self._check_buy_orders()
+        #self._check_buy_orders()
+        self._check_buy_order_status()
         
         # Vérifier les ordres de vente
-        self._check_sell_orders()
-    
+        #self._check_sell_orders()
+        self._check_sell_order_status()
+        
     def _get_order_status_from_history(self, order_id: str) -> Dict:
         """🆕 Récupère le statut le plus récent d'un Order ID depuis l'historique
         
@@ -178,12 +180,10 @@ class OrderSynchronizer:
                 'size': 0,
                 'source': 'error'
             }
-    
+  
     def _check_buy_orders(self):
-        """🆕 Vérifie les ordres d'achat avec la nouvelle logique
-        
-        ✅ CORRECTION: Met à jour la quantité BTC réelle après fill
-        """
+        #🆕 Vérifie les ordres d'achat avec la nouvelle logique
+        #✅ CORRECTION: Met à jour la quantité BTC réelle après fill
         
         # Récupérer les paires en attente d'achat
         buy_pairs = self.database.get_pairs_by_status('Buy')
@@ -250,7 +250,44 @@ class OrderSynchronizer:
                 self.logger.error(f"❌ Erreur vérification paire {pair.index}: {e}")
                 import traceback
                 traceback.print_exc()
-    
+
+    def _check_buy_order_status(self, pair):
+        """Vérifie le statut d'un ordre d'achat"""
+        buy_order_id = pair.buy_order_id
+        
+        # Récupérer le statut de l'ordre depuis Hyperliquid
+        order_status = self.trading_engine.get_order_status(buy_order_id)
+        
+        if not order_status:
+            return
+        
+        status = order_status.get('status', '').lower()
+        
+        # ✅ FIX: Ne changer le statut QUE si l'ordre est "filled"
+        # Si "open" ou "partially_filled", on ne fait RIEN
+        if status == 'filled':
+            # Récupérer la quantité réelle reçue après frais
+            filled_size = float(order_status.get('size', 0))
+            
+            # Mettre à jour la BDD avec la quantité réelle
+            self.database.update_buy_filled(pair.index, filled_size)
+            
+            # Passer au statut "Sell" (prêt pour vente)
+            self.database.update_pair_status(pair.index, 'Sell')
+            
+            self.logger.info(f"✅ Achat rempli - Paire {pair.index} -> Status: Sell")
+        
+        elif status == 'open' or status == 'partially_filled':
+            # ⚠️ NE RIEN FAIRE - Ordre toujours en attente
+            self.logger.info(f"⏳ Achat en cours - Paire {pair.index} -> Status: {status}")
+            return
+        
+        elif status == 'cancelled':
+            # Ordre annulé
+            self.database.update_pair_status(pair.index, 'Cancelled')
+            self.logger.warning(f"❌ Achat annulé - Paire {pair.index}") 
+            
+            
     def _check_sell_orders(self):
         """🆕 Vérifie les ordres de vente avec la nouvelle logique"""
         
@@ -344,6 +381,49 @@ class OrderSynchronizer:
                 self.logger.error(f"❌ Erreur vérification paire {pair.index}: {e}")
                 import traceback
                 traceback.print_exc()
+
+    def _check_sell_order_status(self, pair):
+        """Vérifie le statut d'un ordre de vente"""
+        sell_order_id = pair.sell_order_id
+        
+        if not sell_order_id:
+            return
+        
+        # Récupérer le statut de l'ordre depuis Hyperliquid
+        order_status = self.trading_engine.get_order_status(sell_order_id)
+        
+        if not order_status:
+            return
+        
+        status = order_status.get('status', '').lower()
+        
+        # ✅ FIX: Ne changer le statut QUE si l'ordre est "filled"
+        # Si "open" ou "partially_filled", on ne fait RIEN
+        if status == 'filled':
+            # Récupérer les informations de vente
+            filled_size = float(order_status.get('size', 0))
+            sell_price = pair.sell_price_btc
+            
+            # Calculer le gain
+            gain_usdc = (sell_price - pair.buy_price_btc) * filled_size
+            gain_percent = ((sell_price - pair.buy_price_btc) / pair.buy_price_btc) * 100
+            
+            # Mettre à jour la BDD avec le statut "Complete"
+            self.database.update_sell_filled(pair.index, gain_usdc, gain_percent)
+            
+            self.logger.info(f"✅ Vente remplie - Paire {pair.index} -> Status: Complete")
+            self.logger.info(f"💰 Gain: {gain_usdc:.2f}$ ({gain_percent:.2f}%)")
+        
+        elif status == 'open' or status == 'partially_filled':
+            # ⚠️ NE RIEN FAIRE - Ordre toujours en attente
+            self.logger.info(f"⏳ Vente en cours - Paire {pair.index} -> Status: {status}")
+            return
+        
+        elif status == 'cancelled':
+            # Ordre annulé - remettre en "Sell" pour replacement
+            self.database.update_pair_status(pair.index, 'Sell')
+            self.database.update_sell_order_id(pair.index, None)
+            self.logger.warning(f"❌ Vente annulée - Paire {pair.index} remise en Sell")
     
     def force_sync(self):
         """Force une synchronisation immédiate (pour debug)"""

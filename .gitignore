@@ -96,6 +96,7 @@ outputs/
 results/
 
 # Misc
+*.db
 .idea/
 .vscode/
 *.swp

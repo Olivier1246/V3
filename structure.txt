@@ -1,6 +1,9 @@
 structure des dossier
 /log
  -trading.log
+ -open_orders.json
+ -filled_orders.json
+ -historic.json
 /doc
  -tous les fichier en *.md sauf README.md
 /static
@@ -17,6 +20,7 @@ structure des dossier
 /command
  -bot_controller.py
  -buy_orders.py
+ -hyperliquid_complete_history.py
  -logger.py
  -market_analyzer.py
  -reload_config.py

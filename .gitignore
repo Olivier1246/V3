@@ -104,3 +104,4 @@ results/
 *.tmp
 node_modules/
 dist/
+test/

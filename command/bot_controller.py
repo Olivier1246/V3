@@ -1,12 +1,12 @@
 """
 Module de contrôle principal du bot
+Version JSON - Utilise hyperliquid_complete_history.py et json_sync_orders.py
 
-✅ CORRECTIONS APPLIQUÉES:
-- Lock pour éviter synchronisations concurrentes
-- Vérification si get_open_orders() retourne None (erreur API)
-- Récupération de la QUANTITÉ RÉELLE depuis user_fills()
-- Mise à jour de la quantité BTC réelle dans la BDD
-- Ne pas marquer les ordres comme filled si erreur API
+✅ NOUVEAUTÉS:
+- Service d'historique Hyperliquid en continu
+- Synchronisation basée sur fichiers JSON (pas d'appels API directs)
+- Meilleure observabilité (JSON consultables)
+- Moins de charge API
 """
 
 import time
@@ -20,6 +20,8 @@ from command.trading_engine import TradingEngine
 from command.logger import TradingLogger
 from command.buy_orders import BuyOrderManager
 from command.sell_orders import SellOrderManager
+from command.hyperliquid_complete_history import HyperliquidHistoryService
+from command.json_sync_orders import JsonOrderSynchronizer
 
 # Telegram (optionnel)
 try:
@@ -31,12 +33,11 @@ except ImportError:
 class BotController:
     """Contrôleur principal du bot de trading
     
-    Responsabilités:
-    - Lire la configuration depuis .env
-    - Synchroniser BDD avec Hyperliquid (Direction + Status + Quantité réelle)
-    - Lancer 1 thread d'achat
-    - Lancer 1 thread de vente
-    - Gérer l'arrêt propre
+    Architecture JSON:
+    - HyperliquidHistoryService: Récupère l'historique et génère les JSON
+    - JsonOrderSynchronizer: Lit les JSON et synchronise la BDD
+    - BuyOrderManager: Gère les achats
+    - SellOrderManager: Gère les ventes
     """
     
     def __init__(self, config: TradingConfig):
@@ -44,7 +45,7 @@ class BotController:
         self.logger = TradingLogger(config)
         
         self.logger.info("="*60)
-        self.logger.info("🤖 INITIALISATION DU BOT (VERSION CORRIGÉE)")
+        self.logger.info("🤖 INITIALISATION DU BOT (VERSION JSON)")
         self.logger.info("="*60)
         
         # Initialiser les modules
@@ -52,7 +53,7 @@ class BotController:
         self.market_analyzer = MarketAnalyzer(config)
         self.trading_engine = TradingEngine(config)
         
-        # Telegram (optionnel) - INITIALISER EN PREMIER
+        # Telegram (optionnel)
         self.telegram = None
         if TelegramNotifier and config.telegram_enabled:
             try:
@@ -65,7 +66,20 @@ class BotController:
             except Exception as e:
                 self.logger.error(f"❌ Erreur Telegram: {e}")
         
-        # Initialiser les gestionnaires d'ordres AVEC telegram
+        # Service d'historique Hyperliquid
+        try:
+            self.history_service = HyperliquidHistoryService()
+            self.logger.info("✅ Service d'historique initialisé")
+        except Exception as e:
+            self.logger.error(f"❌ Erreur initialisation service d'historique: {e}")
+            raise
+        
+        # Synchroniseur JSON
+        self.json_sync = JsonOrderSynchronizer(
+            config, self.database, self.logger, self.telegram
+        )
+        
+        # Gestionnaires d'ordres
         self.buy_manager = BuyOrderManager(
             config, self.database, self.trading_engine, 
             self.market_analyzer, self.logger, self.telegram
@@ -77,15 +91,9 @@ class BotController:
         
         # État
         self.is_running = False
-        self.sync_thread = None
-        
-        # Lock pour éviter synchronisations concurrentes
-        self.sync_lock = threading.Lock()
-        self.last_sync_time = None
-        self.sync_failure_count = 0
         
         self.logger.info("="*60)
-        self.logger.info("✅ BOT INITIALISÉ")
+        self.logger.info("✅ BOT INITIALISÉ (VERSION JSON)")
         self.logger.info("="*60)
     
     def start(self):
@@ -100,26 +108,43 @@ class BotController:
         
         self.is_running = True
         
-        # Synchroniser avec Hyperliquid au démarrage
-        self.logger.info("🔄 Synchronisation initiale avec Hyperliquid...")
-        self.sync_with_hyperliquid()
+        # 1. Démarrer le service d'historique Hyperliquid
+        self.logger.info("\n📡 Démarrage du service d'historique...")
+        self.history_service.start()
         
-        # Démarrer les threads
-        self.logger.info("\n📊 Démarrage des threads...")
+        # 2. Forcer une première récupération immédiate
+        self.logger.info("🔄 Récupération initiale de l'historique...")
+        self.history_service.fetch_now()
         
-        # Thread d'achat (1 seul)
+        # Attendre un peu que les JSON soient générés
+        time.sleep(2)
+        
+        # 3. Forcer une première synchronisation
+        self.logger.info("🔄 Synchronisation initiale de la BDD...")
+        self.json_sync.force_sync()
+        
+        # 4. Démarrer le synchroniseur JSON
+        self.logger.info("\n🔄 Démarrage du synchroniseur JSON...")
+        self.json_sync.start()
+        
+        # 5. Démarrer les gestionnaires d'ordres
+        self.logger.info("\n📊 Démarrage des threads de trading...")
+        
+        # Thread d'achat
         self.buy_manager.start()
         
-        # Thread de vente (1 seul)
+        # Thread de vente
         self.sell_manager.start()
-        
-        # Thread de synchronisation périodique
-        self.sync_thread = threading.Thread(target=self._sync_loop, daemon=True, name="SyncThread")
-        self.sync_thread.start()
         
         self.logger.info("="*60)
         self.logger.info("✅ BOT DÉMARRÉ")
         self.logger.info("="*60)
+        self.logger.info("\n💡 Architecture:")
+        self.logger.info("   📡 HyperliquidHistoryService → génère JSON toutes les X minutes")
+        self.logger.info("   🔄 JsonOrderSynchronizer → lit JSON et met à jour BDD")
+        self.logger.info("   🟢 BuyOrderManager → place ordres d'achat")
+        self.logger.info("   🔵 SellOrderManager → place ordres de vente")
+        self.logger.info("="*60 + "\n")
         
         # Notification Telegram
         if self.telegram:
@@ -140,14 +165,18 @@ class BotController:
         
         self.is_running = False
         
-        # Arrêter les threads
-        self.logger.info("🛑 Arrêt des threads...")
+        # Arrêter les threads dans l'ordre
+        self.logger.info("🛑 Arrêt des modules...")
         
+        # 1. Arrêter les gestionnaires d'ordres
         self.buy_manager.stop()
         self.sell_manager.stop()
         
-        if self.sync_thread and self.sync_thread.is_alive():
-            self.sync_thread.join(timeout=5)
+        # 2. Arrêter le synchroniseur JSON
+        self.json_sync.stop()
+        
+        # 3. Arrêter le service d'historique
+        self.history_service.stop()
         
         self.logger.info("="*60)
         self.logger.info("✅ BOT ARRÊTÉ")
@@ -156,228 +185,6 @@ class BotController:
         # Notification Telegram
         if self.telegram:
             self.telegram.send_bot_stopped()
-    
-    def _get_filled_quantity(self, order_id: str) -> float:
-        """✅ NOUVELLE MÉTHODE : Récupère la quantité RÉELLE remplie pour un ordre
-        
-        Args:
-            order_id: ID de l'ordre
-            
-        Returns:
-            float: Quantité réelle remplie (0 si erreur)
-        """
-        try:
-            # Récupérer l'historique des fills pour cet utilisateur
-            user_fills = self.trading_engine.info.user_fills(self.trading_engine.account_address)
-            
-            if not user_fills:
-                return 0
-            
-            # Rechercher tous les fills pour cet ordre
-            total_filled = 0
-            for fill in user_fills:
-                if str(fill.get('oid')) == str(order_id):
-                    total_filled += float(fill.get('sz', 0))
-            
-            return total_filled
-            
-        except Exception as e:
-            self.logger.error(f"❌ Erreur récupération quantité filled: {e}")
-            return 0
-    
-    def sync_with_hyperliquid(self):
-        """✅ SYNCHRONISE la BDD avec l'état réel sur Hyperliquid
-        
-        CORRECTIONS APPLIQUÉES:
-        - Lock pour éviter synchronisations concurrentes
-        - Vérification si get_open_orders() retourne None (erreur API)
-        - Récupération de la QUANTITÉ RÉELLE depuis user_fills()
-        - Mise à jour de la quantité BTC réelle dans la BDD
-        - Ne pas marquer les ordres comme filled si erreur API
-        
-        Vérifie Direction + Status + Quantité réelle pour chaque ordre:
-        - Buy + Open = Paire en attente d'achat (status='Buy')
-        - Buy + Filled = Mise à jour quantité réelle + status='Sell'
-        - Sell + Filled = Paire complétée (status='Complete')
-        """
-        # Utiliser un lock pour éviter les sync concurrentes
-        if not self.sync_lock.acquire(blocking=False):
-            self.logger.warning("⚠️  Synchronisation déjà en cours, skip")
-            return
-        
-        try:
-            self.logger.info("\n🔄 Synchronisation avec Hyperliquid...")
-            sync_start_time = time.time()
-            
-            # Récupérer les ordres ouverts (Open orders)
-            open_orders = self.trading_engine.get_open_orders()
-            
-            # CORRECTIF CRITIQUE: Vérifier si la récupération a échoué
-            if open_orders is None:
-                self.logger.error("❌ Impossible de récupérer les ordres ouverts (erreur API)")
-                self.logger.error("   La synchronisation est abandonnée pour éviter les erreurs")
-                self.sync_failure_count += 1
-                
-                if self.sync_failure_count >= 3:
-                    self.logger.error(f"⚠️  {self.sync_failure_count} échecs de sync consécutifs")
-                    self.logger.error("   Vérifiez votre connexion internet et l'état de l'API Hyperliquid")
-                
-                return
-            
-            # Réinitialiser le compteur d'échecs si succès
-            if self.sync_failure_count > 0:
-                self.logger.info(f"✅ Synchronisation réussie après {self.sync_failure_count} échec(s)")
-                self.sync_failure_count = 0
-            
-            self.logger.info(f"📊 {len(open_orders)} ordre(s) ouvert(s) sur Hyperliquid")
-            self.last_sync_time = datetime.now(timezone.utc)
-            
-            # Créer des maps pour accès rapide
-            open_orders_map = {}
-            for order in open_orders:
-                order_id = str(order.get('id', order.get('oid', '')))
-                side = order.get('side', '').upper()
-                direction = 'BUY' if side == 'B' else 'SELL'
-                
-                open_orders_map[order_id] = {
-                    'direction': direction,
-                    'order': order
-                }
-            
-            # Vérifier les paires en attente d'achat (status='Buy')
-            pending_buy = self.database.get_pending_buy_orders()
-            self.logger.info(f"📊 {len(pending_buy)} paire(s) en attente d'achat dans BDD")
-            
-            for pair in pending_buy:
-                buy_order_id = str(pair.buy_order_id)
-                
-                # Vérifier si l'ordre d'achat est encore ouvert
-                if buy_order_id in open_orders_map:
-                    order_info = open_orders_map[buy_order_id]
-                    if order_info['direction'] == 'BUY':
-                        # Ordre d'achat toujours Open, pas de changement
-                        self.logger.info(f"⏳ Ordre d'achat {buy_order_id} toujours Open")
-                        continue
-                
-                # L'ordre n'est plus ouvert = il est Filled
-                self.logger.info(f"✅ Ordre d'achat {buy_order_id} rempli (Filled)")
-                
-                # ✅ CORRECTION : Récupérer la quantité RÉELLE remplie
-                filled_quantity = self._get_filled_quantity(buy_order_id)
-                
-                if filled_quantity > 0:
-                    self.logger.info(f"   Quantité calculée: {pair.quantity_btc:.8f} BTC")
-                    self.logger.info(f"   Quantité réelle: {filled_quantity:.8f} BTC")
-                    self.logger.info(f"   Différence (frais maker): {pair.quantity_btc - filled_quantity:.8f} BTC")
-                    
-                    # ✅ CORRECTION : Mettre à jour la quantité réelle dans la BDD
-                    self.database.update_quantity_btc(pair.index, filled_quantity)
-                    
-                    # Notification Telegram
-                    if self.telegram and self.config.telegram_on_order_filled:
-                        try:
-                            self.telegram.send_buy_order_filled(
-                                order_id=buy_order_id,
-                                price=pair.buy_price_btc,
-                                size=filled_quantity
-                            )
-                        except Exception as e:
-                            self.logger.error(f"❌ Erreur notification: {e}")
-                else:
-                    self.logger.warning(f"⚠️  Impossible de récupérer la quantité réelle pour {buy_order_id}")
-                    self.logger.warning(f"   Utilisation de la quantité calculée: {pair.quantity_btc:.8f} BTC")
-                
-                # Mettre à jour le statut
-                self.database.update_pair_status(pair.index, 'Sell')
-            
-            # Vérifier les paires en attente de vente (status='Sell')
-            pending_sell = self.database.get_pending_sell_orders()
-            self.logger.info(f"📊 {len(pending_sell)} paire(s) en attente de vente dans BDD")
-            
-            for pair in pending_sell:
-                if not pair.sell_order_id:
-                    # Pas encore d'ordre de vente placé
-                    continue
-                
-                sell_order_id = str(pair.sell_order_id)
-                
-                # Vérifier si l'ordre de vente est encore ouvert
-                if sell_order_id in open_orders_map:
-                    order_info = open_orders_map[sell_order_id]
-                    if order_info['direction'] == 'SELL':
-                        # Ordre de vente toujours Open, pas de changement
-                        self.logger.info(f"⏳ Ordre de vente {sell_order_id} toujours Open")
-                        continue
-                
-                # L'ordre n'est plus ouvert = il est Filled
-                self.logger.info(f"✅ Ordre de vente {sell_order_id} rempli (Filled)")
-                
-                # Calculer le profit (avec frais maker)
-                maker_fee_percent = self.config.maker_fee / 100
-                
-                buy_cost = pair.buy_price_btc * pair.quantity_btc
-                sell_revenue = pair.sell_price_btc * pair.quantity_btc
-                gross_profit = sell_revenue - buy_cost
-                
-                buy_fee = buy_cost * maker_fee_percent
-                sell_fee = sell_revenue * maker_fee_percent
-                total_fees = buy_fee + sell_fee
-                
-                net_profit = gross_profit - total_fees
-                profit_percent = ((pair.sell_price_btc - pair.buy_price_btc) / pair.buy_price_btc) * 100
-                
-                self.logger.info(f"💰 Profit brut: {gross_profit:.2f}$")
-                self.logger.info(f"💰 Frais maker: {total_fees:.4f}$")
-                self.logger.info(f"💰 Profit net: {net_profit:.2f}$ ({profit_percent:+.2f}%)")
-                
-                # Notification Telegram
-                if self.telegram and self.config.telegram_on_order_filled:
-                    try:
-                        self.telegram.send_sell_order_filled(
-                            order_id=sell_order_id,
-                            price=pair.sell_price_btc,
-                            size=pair.quantity_btc,
-                            buy_price=pair.buy_price_btc,
-                            profit=net_profit,
-                            profit_percent=profit_percent
-                        )
-                    except Exception as e:
-                        self.logger.error(f"❌ Erreur notification: {e}")
-                
-                # Marquer comme complete
-                self.database.complete_order_pair(pair.index)
-            
-            sync_duration = time.time() - sync_start_time
-            self.logger.info(f"✅ Synchronisation terminée ({sync_duration:.1f}s)")
-            
-        except Exception as e:
-            self.logger.error(f"❌ Erreur synchronisation: {e}")
-            import traceback
-            traceback.print_exc()
-            self.sync_failure_count += 1
-            
-        finally:
-            # Toujours libérer le lock
-            self.sync_lock.release()
-    
-    def _sync_loop(self):
-        """Boucle de synchronisation périodique"""
-        self.logger.info("🔄 Thread de synchronisation démarré")
-        
-        SYNC_INTERVAL = self.config.sell_check_interval_seconds
-        
-        while self.is_running:
-            try:
-                time.sleep(SYNC_INTERVAL)
-                
-                if self.is_running:
-                    self.sync_with_hyperliquid()
-                    
-            except Exception as e:
-                self.logger.error(f"❌ Erreur dans boucle de sync: {e}")
-                time.sleep(60)
-        
-        self.logger.info("🔕 Thread de synchronisation terminé")
     
     def get_status(self) -> Dict:
         """Retourne le statut actuel du bot"""
@@ -395,11 +202,14 @@ class BotController:
             # État de santé des connexions
             health = self.trading_engine.get_health_status()
             
+            # Statut des managers
+            buy_status = {'running': self.buy_manager.running}
+            sell_status = self.sell_manager.get_status()
+            
             return {
                 'is_running': self.is_running,
                 'timestamp': datetime.now(timezone.utc).isoformat(),
-                'last_sync': self.last_sync_time.isoformat() if self.last_sync_time else None,
-                'sync_failures': self.sync_failure_count,
+                'architecture': 'JSON-based',
                 'statistics': stats,
                 'balances': {
                     'usdc': usdc_balance,
@@ -410,7 +220,18 @@ class BotController:
                     'price': market_analysis.get('current_price'),
                     'trend': market_analysis.get('trend')
                 },
-                'health': health
+                'health': health,
+                'managers': {
+                    'history_service': {
+                        'running': self.history_service.running,
+                        'interval_minutes': self.history_service.check_interval_minutes
+                    },
+                    'json_sync': {
+                        'running': self.json_sync.running
+                    },
+                    'buy_manager': buy_status,
+                    'sell_manager': sell_status
+                }
             }
             
         except Exception as e:
@@ -490,13 +311,13 @@ class BotController:
             
             result = self.trading_engine.cancel_order(
                 order_id=order_id,
-                operator_action=True  # Confirmation explicite
+                operator_action=True
             )
             
             if result:
                 self.logger.info(f"✅ Ordre {order_id} annulé")
-                # Re-synchroniser
-                self.sync_with_hyperliquid()
+                # Forcer une nouvelle récupération de l'historique
+                self.history_service.fetch_now()
             else:
                 self.logger.error(f"❌ Échec annulation ordre {order_id}")
             
@@ -515,8 +336,8 @@ class BotController:
             
             if result:
                 self.logger.info("✅ Tous les ordres annulés")
-                # Re-synchroniser
-                self.sync_with_hyperliquid()
+                # Forcer une nouvelle récupération de l'historique
+                self.history_service.fetch_now()
             else:
                 self.logger.error("❌ Échec annulation des ordres")
             
@@ -525,3 +346,16 @@ class BotController:
         except Exception as e:
             self.logger.error(f"❌ Erreur annulation ordres: {e}")
             return False
+    
+    def force_sync(self):
+        """Force une synchronisation immédiate (pour debug/admin)"""
+        self.logger.info("🔄 Synchronisation forcée...")
+        
+        # 1. Récupérer l'historique
+        self.history_service.fetch_now()
+        
+        # 2. Synchroniser la BDD
+        time.sleep(1)  # Laisser le temps aux fichiers d'être écrits
+        self.json_sync.force_sync()
+        
+        self.logger.info("✅ Synchronisation forcée terminée")

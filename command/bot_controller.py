@@ -20,7 +20,7 @@ from command.trading_engine import TradingEngine
 from command.logger import TradingLogger
 from command.buy_orders import BuyOrderManager
 from command.sell_orders import SellOrderManager
-from hyperliquid_complete_history import HyperliquidHistoryService
+from command.hyperliquid_complete_history import HyperliquidHistoryService
 from command.json_sync_orders import JsonOrderSynchronizer
 
 # Telegram (optionnel)

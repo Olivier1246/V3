@@ -354,40 +354,33 @@ class JsonOrderSynchronizer:
                         self.logger.info(f"✅ Ordre de vente {sell_order_id} REMPLI")
                         self.logger.info(f"   Quantité: {total_filled:.8f} BTC")
                         
-                        # Calculer le profit (AVEC frais maker uniquement)
-                        maker_fee_percent = self.config.maker_fee / 100
+                        # ✅ CORRECTION: Utiliser complete_pair() pour calculer ET enregistrer les gains
+                        success = self.database.complete_pair(pair.index, pair.sell_price_btc)
                         
-                        buy_cost = pair.buy_price_btc * pair.quantity_btc
-                        sell_revenue = pair.sell_price_btc * pair.quantity_btc
-                        gross_profit = sell_revenue - buy_cost
-                        
-                        buy_fee = buy_cost * maker_fee_percent
-                        sell_fee = sell_revenue * maker_fee_percent
-                        total_fees = buy_fee + sell_fee
-                        
-                        net_profit = gross_profit - total_fees
-                        profit_percent = ((pair.sell_price_btc - pair.buy_price_btc) / pair.buy_price_btc) * 100
-                        
-                        # Mettre à jour le statut dans la BDD
-                        self.database.update_pair_status(pair.index, 'Complete')
-                        self.logger.info(f"✅ Paire {pair.index} - Status mis à jour: Sell -> Complete")
-                        self.logger.info(f"💰 Profit brut: {gross_profit:.2f}$")
-                        self.logger.info(f"💰 Frais maker: {total_fees:.4f}$")
-                        self.logger.info(f"💰 Profit net: {net_profit:.2f}$ ({profit_percent:+.2f}%)")
-                        
-                        # Notification Telegram
-                        if self.telegram and self.config.telegram_on_order_filled:
-                            try:
-                                self.telegram.send_sell_order_filled(
-                                    order_id=sell_order_id,
-                                    price=pair.sell_price_btc,
-                                    size=total_filled,
-                                    buy_price=pair.buy_price_btc,
-                                    profit=net_profit,
-                                    profit_percent=profit_percent
-                                )
-                            except Exception as e:
-                                self.logger.error(f"❌ Erreur notification: {e}")
+                        if success:
+                            self.logger.info(f"✅ Paire {pair.index} - Cycle complété avec gains calculés")
+                            
+                            # Récupérer la paire mise à jour pour avoir les gains
+                            updated_pair = self.database.get_pair_by_index(pair.index)
+                            
+                            if updated_pair:
+                                # Notification Telegram avec les vrais gains de la BDD
+                                if self.telegram and self.config.telegram_on_order_filled:
+                                    try:
+                                        self.telegram.send_sell_order_filled(
+                                            order_id=sell_order_id,
+                                            price=pair.sell_price_btc,
+                                            size=total_filled,
+                                            buy_price=pair.buy_price_btc,
+                                            profit=updated_pair.gain_usdc,
+                                            profit_percent=updated_pair.gain_percent
+                                        )
+                                    except Exception as e:
+                                        self.logger.error(f"❌ Erreur notification: {e}")
+                        else:
+                            self.logger.error(f"❌ Échec complete_pair pour paire {pair.index}")
+                            # Fallback: juste changer le statut sans calculer les gains
+                            self.database.update_pair_status(pair.index, 'Complete')
                     else:
                         self.logger.warning(f"⚠️  Ordre {sell_order_id} partiellement rempli")
                         self.logger.warning(f"   Attendu: {pair.quantity_btc:.8f}, Rempli: {total_filled:.8f}")

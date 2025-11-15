@@ -434,6 +434,18 @@ class Database:
             print(f"❌ Erreur completion paire: {e}")
             return False
     
+    def complete_pair(self, index: int, sell_price_actual: float = None) -> bool:
+        """Alias pour complete_order_pair() - pour compatibilité avec les anciens scripts
+        
+        Args:
+            index: Index de la paire
+            sell_price_actual: Prix de vente réel (optionnel)
+        
+        Returns:
+            bool: True si succès
+        """
+        return self.complete_order_pair(index, sell_price_actual)
+    
     def get_pending_buy_orders(self):
         """Récupère les paires en attente de remplissage d'achat (status='Buy')"""
         return self.get_pairs_by_status('Buy')

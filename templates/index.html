@@ -292,6 +292,28 @@
                 <div class="label">Taux de Réussite</div>
                 <div class="value" id="win-rate">{{ "%.1f"|format(win_rate) }}%</div>
             </div>
+            <!-- 🆕 État du Marché -->
+            <div class="stat-card">
+                <div class="label">État du Marché</div>
+                <div class="value" id="market-type" style="
+                    {% if market_type == 'BULL' %}color: #4caf50;{% elif market_type == 'BEAR' %}color: #f44336;{% elif market_type == 'RANGE' %}color: #ff9800;{% else %}color: #8892b0;{% endif %}
+                ">
+                    {% if market_type == 'BULL' %}🐂 BULL{% elif market_type == 'BEAR' %}🐻 BEAR{% elif market_type == 'RANGE' %}↔️ RANGE{% else %}❓ {{ market_type }}{% endif %}
+                </div>
+                <div style="font-size: 0.75em; color: #8892b0; margin-top: 5px;">
+                    {% if market_trend == 'UPTREND' %}📈 Tendance haussière{% elif market_trend == 'DOWNTREND' %}📉 Tendance baissière{% elif market_trend == 'SIDEWAYS' %}➡️ Latéral{% else %}{{ market_trend }}{% endif %}
+                </div>
+            </div>
+            <!-- 🆕 Prix du BTC -->
+            <div class="stat-card">
+                <div class="label">Prix BTC</div>
+                <div class="value" id="btc-price" style="color: #f7931a;">
+                    {% if btc_price > 0 %}${{ "{:,.0f}"|format(btc_price) }}{% else %}-{% endif %}
+                </div>
+                <div style="font-size: 0.75em; color: #8892b0; margin-top: 5px;">
+                    Prix spot actuel
+                </div>
+            </div>
         </div>
 
         <!-- Controls -->

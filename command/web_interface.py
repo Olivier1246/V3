@@ -171,6 +171,20 @@ class WebInterface:
         
                 # Heure actuelle
                 now = datetime.now().strftime('%H:%M:%S')
+                
+                # 🆕 Récupérer l'analyse de marché et le prix BTC
+                market_type = 'UNKNOWN'
+                market_trend = 'UNKNOWN'
+                btc_price = 0
+                
+                try:
+                    if self.bot_controller and hasattr(self.bot_controller, 'market_analyzer'):
+                        analysis = self.bot_controller.market_analyzer.analyze_market()
+                        market_type = analysis.get('market_type', 'UNKNOWN')
+                        market_trend = analysis.get('trend', 'UNKNOWN')
+                        btc_price = analysis.get('current_price', 0)
+                except Exception as e:
+                    print(f"⚠️ Erreur récupération analyse marché: {e}")
         
                 return render_template('index.html',
                     pairs=pairs,
@@ -180,7 +194,10 @@ class WebInterface:
                     complete_count=complete_count,
                     total_gain=total_gain,
                     win_rate=win_rate,
-                    now=now
+                    now=now,
+                    market_type=market_type,
+                    market_trend=market_trend,
+                    btc_price=btc_price
                 )
             except Exception as e:
                 print(f"❌ Erreur page index: {e}")

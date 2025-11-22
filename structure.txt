@@ -13,19 +13,22 @@ structure des dossier
 /utils
  -diagnostic.py
 /telegram
+ -__init__.py
  -telegram_notifier.py
 /DB
+ -__init__.py
  -database.py
  -trading_history.db
 /command
+ -__init__.py
  -bot_controller.py
  -buy_orders.py
  -hyperliquid_complete_history.py
+ -json_sync_orders.py
  -logger.py
  -market_analyzer.py
  -reload_config.py
  -sell_orders.py
- -sync_hyperliquid_orders.py
  -trading_engine.py
  -web_interface.py
 config.py

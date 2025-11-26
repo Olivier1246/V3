@@ -462,81 +462,93 @@ class WebInterface:
         @self.app.route('/control/reload_config', methods=['POST'])
         @self.app.route('/api/control/reload_config', methods=['POST'])
         def control_reload_config():
-            """🔧 CORRECTION: Recharge la configuration avec gestion d'erreur"""
+            """🆕 Recharge la configuration depuis le fichier .env et propage aux modules
+            
+            Utilise bot_controller.reload_config() pour:
+            - Recharger le .env
+            - Propager aux modules (market_analyzer, trading_engine, buy_manager, sell_manager, etc.)
+            - Détecter et afficher les changements
+            - Envoyer notification Telegram si configuré
+            
+            Endpoints:
+            - POST /control/reload_config : Interface web (avec flash messages)
+            - POST /api/control/reload_config : API REST (retour JSON)
+            """
             try:
-                if hasattr(self.config, 'reload'):
-                    success = self.config.reload()
-                    
-                    if success:
-                        # Mettre à jour les composants qui dépendent de la config
-                        message = '✅ Configuration rechargée avec succès'
-                        print(message)
-                        
-                        # Si c'est une requête API, retourner JSON
-                        if request.path.startswith('/api/'):
-                            return jsonify({
-                                'success': True,
-                                'message': message,
-                                'config': {
-                                    'bull_market': {
-                                        'buy_offset': self.config.bull_buy_offset,
-                                        'sell_offset': self.config.bull_sell_offset,
-                                        'percent': self.config.bull_percent,
-                                        'time_pause': self.config.bull_time_pause,
-                                        'auto_interval_new': self.config.bull_auto_interval_new,
-                                        'buy_enabled': self.config.bull_buy_enabled
-                                    },
-                                    'bear_market': {
-                                        'buy_offset': self.config.bear_buy_offset,
-                                        'sell_offset': self.config.bear_sell_offset,
-                                        'percent': self.config.bear_percent,
-                                        'time_pause': self.config.bear_time_pause,
-                                        'auto_interval_new': self.config.bear_auto_interval_new,
-                                        'buy_enabled': self.config.bear_buy_enabled
-                                    },
-                                    'range_market': {
-                                        'buy_offset': self.config.range_buy_offset,
-                                        'sell_offset': self.config.range_sell_offset,
-                                        'percent': self.config.range_percent,
-                                        'time_pause': self.config.range_time_pause,
-                                        'auto_interval_new': self.config.range_auto_interval_new,
-                                        'dynamic_percent': self.config.range_dynamic_percent,
-                                        'buy_enabled': self.config.range_buy_enabled
-                                    },
-                                    'moving_averages': {
-                                        'ma4_period': self.config.ma4_period,
-                                        'ma8_period': self.config.ma8_period,
-                                        'ma12_period': self.config.ma12_period,
-                                        'ma12_flat_threshold': self.config.ma12_flat_threshold,
-                                        'ma12_periods_check': self.config.ma12_periods_check
-                                    },
-                                    'fees': {
-                                        'maker_fee': self.config.maker_fee,
-                                        'taker_fee': self.config.taker_fee
-                                    },
-                                    'last_reload': datetime.now(timezone.utc).isoformat()
-                                }
-                            })
-                        else:
-                            flash(message, 'success')
-                    else:
-                        message = '❌ Erreur lors du rechargement'
-                        if request.path.startswith('/api/'):
-                            return jsonify({
-                                'success': False,
-                                'message': message
-                            }), 500
-                        else:
-                            flash(message, 'error')
-                else:
-                    message = '❌ Rechargement non supporté'
+                # Vérifier que bot_controller existe et a la méthode reload_config
+                if not self.bot_controller:
+                    message = '❌ Bot controller non disponible'
                     if request.path.startswith('/api/'):
                         return jsonify({
                             'success': False,
                             'message': message
-                        }), 501
+                        }), 500
                     else:
-                        flash(message, 'warning')
+                        flash(message, 'error')
+                        return redirect(url_for('all_pairs'))
+                
+                if not hasattr(self.bot_controller, 'reload_config'):
+                    # Fallback sur l'ancienne méthode si reload_config n'existe pas
+                    if hasattr(self.config, 'reload'):
+                        success = self.config.reload()
+                        
+                        if success:
+                            message = '✅ Configuration rechargée (mode basique - sans propagation)'
+                            print(message)
+                            
+                            if request.path.startswith('/api/'):
+                                return jsonify({
+                                    'success': True,
+                                    'message': message,
+                                    'warning': 'Configuration rechargée mais non propagée aux modules. Mise à jour de bot_controller recommandée.',
+                                    'config': {
+                                        'bull_market': {
+                                            'buy_offset': self.config.bull_buy_offset,
+                                            'sell_offset': self.config.bull_sell_offset,
+                                            'percent': self.config.bull_percent
+                                        },
+                                        'last_reload': datetime.now(timezone.utc).isoformat()
+                                    }
+                                })
+                            else:
+                                flash(message, 'warning')
+                                return redirect(url_for('all_pairs'))
+                        else:
+                            message = '❌ Erreur lors du rechargement'
+                            if request.path.startswith('/api/'):
+                                return jsonify({'success': False, 'message': message}), 500
+                            else:
+                                flash(message, 'error')
+                                return redirect(url_for('all_pairs'))
+                    else:
+                        message = '❌ Rechargement non supporté - Mise à jour requise'
+                        if request.path.startswith('/api/'):
+                            return jsonify({'success': False, 'message': message}), 501
+                        else:
+                            flash(message, 'error')
+                            return redirect(url_for('all_pairs'))
+                
+                # Appeler la méthode reload_config du bot_controller
+                # Cette méthode recharge la config ET propage aux modules
+                result = self.bot_controller.reload_config()
+                
+                # Si requête API, retourner le résultat JSON complet
+                if request.path.startswith('/api/'):
+                    status_code = 200 if result.get('success') else 500
+                    return jsonify(result), status_code
+                
+                # Si interface web, afficher un message flash et rediriger
+                if result.get('success'):
+                    changes = result.get('changes', {})
+                    if changes:
+                        flash(f"✅ Configuration rechargée - {len(changes)} changement(s) détecté(s)", 'success')
+                    else:
+                        flash('✅ Configuration rechargée - Aucun changement détecté', 'info')
+                else:
+                    flash(f"❌ Échec: {result.get('message', 'Erreur inconnue')}", 'error')
+                
+                return redirect(url_for('all_pairs'))
+                
             except Exception as e:
                 error_msg = f'❌ Erreur rechargement: {str(e)}'
                 print(f"❌ Erreur control_reload_config: {e}")
@@ -550,10 +562,7 @@ class WebInterface:
                     }), 500
                 else:
                     flash(error_msg, 'error')
-            
-            # Redirection pour les requêtes web
-            if not request.path.startswith('/api/'):
-                return redirect(url_for('all_pairs'))
+                    return redirect(url_for('all_pairs'))
         
         @self.app.route('/control/cancel_order/<order_id>', methods=['POST'])
         def control_cancel_order(order_id):
@@ -632,69 +641,6 @@ class WebInterface:
                 traceback.print_exc()
             
             return redirect(url_for('all_pairs'))
-        
-        @self.app.route('/api/control/reload_config', methods=['POST'])
-        def api_reload_config():
-            """🆕 Recharge la configuration depuis le fichier .env
-            
-            Endpoint API pour recharger la configuration sans redémarrer le bot.
-            Utilisé par le script reload_config.py
-            
-            Returns:
-                JSON avec succès, message et détails de la configuration
-            """
-            try:
-                if not self.bot_controller:
-                    return jsonify({
-                        'success': False,
-                        'message': 'Bot controller non disponible'
-                    }), 500
-                
-                # Appeler la méthode de rechargement
-                result = self.bot_controller.reload_config()
-                
-                # Retourner le résultat avec le code HTTP approprié
-                status_code = 200 if result.get('success') else 500
-                return jsonify(result), status_code
-                
-            except Exception as e:
-                print(f"❌ Erreur api_reload_config: {e}")
-                import traceback
-                traceback.print_exc()
-                
-                return jsonify({
-                    'success': False,
-                    'message': f'Erreur: {str(e)}',
-                    'timestamp': datetime.now(timezone.utc).isoformat()
-                }), 500
-        
-        @self.app.route('/control/reload_config', methods=['POST'])
-        def control_reload_config():
-            """🆕 Interface web pour recharger la configuration"""
-            try:
-                if not self.bot_controller:
-                    flash('❌ Bot controller non disponible', 'error')
-                    return redirect(url_for('all_pairs'))
-                
-                result = self.bot_controller.reload_config()
-                
-                if result.get('success'):
-                    changes = result.get('changes', {})
-                    if changes:
-                        flash(f"✅ Configuration rechargée - {len(changes)} changement(s) détecté(s)", 'success')
-                    else:
-                        flash('✅ Configuration rechargée - Aucun changement détecté', 'info')
-                else:
-                    flash(f"❌ Échec: {result.get('message', 'Erreur inconnue')}", 'error')
-                    
-            except Exception as e:
-                flash(f'❌ Erreur rechargement: {str(e)}', 'error')
-                print(f"❌ Erreur control_reload_config: {e}")
-                import traceback
-                traceback.print_exc()
-            
-            return redirect(url_for('all_pairs'))
-
     
     def error_response(self, message, title="Erreur"):
         """🆕 Retourne une page d'erreur informative et stylée"""

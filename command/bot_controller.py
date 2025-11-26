@@ -359,3 +359,163 @@ class BotController:
         self.json_sync.force_sync()
         
         self.logger.info("✅ Synchronisation forcée terminée")
+    
+    def reload_config(self) -> Dict:
+        """Recharge la configuration depuis le fichier .env et propage aux modules
+        
+        Returns:
+            dict: Résultat du rechargement avec succès et détails
+        """
+        try:
+            self.logger.info("="*60)
+            self.logger.info("🔄 RECHARGEMENT DE LA CONFIGURATION")
+            self.logger.info("="*60)
+            
+            # Sauvegarder l'ancienne config pour comparaison
+            old_config = {
+                'bull_buy_offset': self.config.bull_buy_offset,
+                'bull_sell_offset': self.config.bull_sell_offset,
+                'bear_buy_offset': self.config.bear_buy_offset,
+                'bear_sell_offset': self.config.bear_sell_offset,
+                'range_buy_offset': self.config.range_buy_offset,
+                'range_sell_offset': self.config.range_sell_offset,
+                'bull_percent': self.config.bull_percent,
+                'bear_percent': self.config.bear_percent,
+                'range_percent': self.config.range_percent,
+            }
+            
+            # 1. Recharger la configuration
+            success = self.config.reload()
+            
+            if not success:
+                self.logger.error("❌ Échec du rechargement de la configuration")
+                return {
+                    'success': False,
+                    'message': 'Échec du rechargement de la configuration',
+                    'timestamp': datetime.now(timezone.utc).isoformat()
+                }
+            
+            # 2. Propager la nouvelle config aux modules
+            self.logger.info("📡 Propagation de la configuration aux modules...")
+            
+            # Market Analyzer
+            if hasattr(self, 'market_analyzer') and self.market_analyzer:
+                self.market_analyzer.config = self.config
+                self.logger.info("   ✅ MarketAnalyzer mis à jour")
+            
+            # Trading Engine
+            if hasattr(self, 'trading_engine') and self.trading_engine:
+                self.trading_engine.config = self.config
+                self.logger.info("   ✅ TradingEngine mis à jour")
+            
+            # Buy Manager
+            if hasattr(self, 'buy_manager') and self.buy_manager:
+                self.buy_manager.config = self.config
+                self.logger.info("   ✅ BuyOrderManager mis à jour")
+            
+            # Sell Manager
+            if hasattr(self, 'sell_manager') and self.sell_manager:
+                self.sell_manager.config = self.config
+                self.logger.info("   ✅ SellOrderManager mis à jour")
+            
+            # Database
+            if hasattr(self, 'database') and self.database:
+                self.database.config = self.config
+                self.logger.info("   ✅ Database mis à jour")
+            
+            # JSON Sync
+            if hasattr(self, 'json_sync') and self.json_sync:
+                self.json_sync.config = self.config
+                self.logger.info("   ✅ JsonOrderSynchronizer mis à jour")
+            
+            # 3. Préparer le résumé des changements
+            new_config = {
+                'bull_buy_offset': self.config.bull_buy_offset,
+                'bull_sell_offset': self.config.bull_sell_offset,
+                'bear_buy_offset': self.config.bear_buy_offset,
+                'bear_sell_offset': self.config.bear_sell_offset,
+                'range_buy_offset': self.config.range_buy_offset,
+                'range_sell_offset': self.config.range_sell_offset,
+                'bull_percent': self.config.bull_percent,
+                'bear_percent': self.config.bear_percent,
+                'range_percent': self.config.range_percent,
+            }
+            
+            changes = {}
+            for key in old_config:
+                if old_config[key] != new_config[key]:
+                    changes[key] = {
+                        'old': old_config[key],
+                        'new': new_config[key]
+                    }
+            
+            self.logger.info("="*60)
+            self.logger.info("✅ Configuration rechargée et propagée avec succès")
+            self.logger.info("="*60)
+            
+            # Notification Telegram
+            if self.telegram and changes:
+                try:
+                    changes_text = "\n".join([
+                        f"{k}: {v['old']} → {v['new']}"
+                        for k, v in changes.items()
+                    ])
+                    self.telegram.send_message(
+                        f"🔄 Configuration rechargée\n\nChangements:\n{changes_text}"
+                    )
+                except Exception as e:
+                    self.logger.error(f"❌ Erreur notification Telegram: {e}")
+            
+            return {
+                'success': True,
+                'message': 'Configuration rechargée avec succès',
+                'changes': changes,
+                'timestamp': datetime.now(timezone.utc).isoformat(),
+                'config': {
+                    'bull_market': {
+                        'buy_offset': self.config.bull_buy_offset,
+                        'sell_offset': self.config.bull_sell_offset,
+                        'percent': self.config.bull_percent,
+                        'time_pause': self.config.bull_time_pause,
+                        'auto_interval_new': self.config.bull_auto_interval_new
+                    },
+                    'bear_market': {
+                        'buy_offset': self.config.bear_buy_offset,
+                        'sell_offset': self.config.bear_sell_offset,
+                        'percent': self.config.bear_percent,
+                        'time_pause': self.config.bear_time_pause,
+                        'auto_interval_new': self.config.bear_auto_interval_new
+                    },
+                    'range_market': {
+                        'buy_offset': self.config.range_buy_offset,
+                        'sell_offset': self.config.range_sell_offset,
+                        'percent': self.config.range_percent,
+                        'time_pause': self.config.range_time_pause,
+                        'auto_interval_new': self.config.range_auto_interval_new,
+                        'dynamic_percent': self.config.range_dynamic_percent
+                    },
+                    'moving_averages': {
+                        'ma4_period': self.config.ma4_period,
+                        'ma8_period': self.config.ma8_period,
+                        'ma12_period': self.config.ma12_period,
+                        'ma12_flat_threshold': self.config.ma12_flat_threshold,
+                        'ma12_periods_check': self.config.ma12_periods_check
+                    },
+                    'fees': {
+                        'maker_fee': self.config.maker_fee,
+                        'taker_fee': self.config.taker_fee
+                    }
+                }
+            }
+            
+        except Exception as e:
+            self.logger.error(f"❌ Erreur lors du rechargement de la configuration: {e}")
+            import traceback
+            traceback.print_exc()
+            
+            return {
+                'success': False,
+                'message': f'Erreur: {str(e)}',
+                'timestamp': datetime.now(timezone.utc).isoformat()
+            }
+

@@ -632,6 +632,69 @@ class WebInterface:
                 traceback.print_exc()
             
             return redirect(url_for('all_pairs'))
+        
+        @self.app.route('/api/control/reload_config', methods=['POST'])
+        def api_reload_config():
+            """🆕 Recharge la configuration depuis le fichier .env
+            
+            Endpoint API pour recharger la configuration sans redémarrer le bot.
+            Utilisé par le script reload_config.py
+            
+            Returns:
+                JSON avec succès, message et détails de la configuration
+            """
+            try:
+                if not self.bot_controller:
+                    return jsonify({
+                        'success': False,
+                        'message': 'Bot controller non disponible'
+                    }), 500
+                
+                # Appeler la méthode de rechargement
+                result = self.bot_controller.reload_config()
+                
+                # Retourner le résultat avec le code HTTP approprié
+                status_code = 200 if result.get('success') else 500
+                return jsonify(result), status_code
+                
+            except Exception as e:
+                print(f"❌ Erreur api_reload_config: {e}")
+                import traceback
+                traceback.print_exc()
+                
+                return jsonify({
+                    'success': False,
+                    'message': f'Erreur: {str(e)}',
+                    'timestamp': datetime.now(timezone.utc).isoformat()
+                }), 500
+        
+        @self.app.route('/control/reload_config', methods=['POST'])
+        def control_reload_config():
+            """🆕 Interface web pour recharger la configuration"""
+            try:
+                if not self.bot_controller:
+                    flash('❌ Bot controller non disponible', 'error')
+                    return redirect(url_for('all_pairs'))
+                
+                result = self.bot_controller.reload_config()
+                
+                if result.get('success'):
+                    changes = result.get('changes', {})
+                    if changes:
+                        flash(f"✅ Configuration rechargée - {len(changes)} changement(s) détecté(s)", 'success')
+                    else:
+                        flash('✅ Configuration rechargée - Aucun changement détecté', 'info')
+                else:
+                    flash(f"❌ Échec: {result.get('message', 'Erreur inconnue')}", 'error')
+                    
+            except Exception as e:
+                flash(f'❌ Erreur rechargement: {str(e)}', 'error')
+                print(f"❌ Erreur control_reload_config: {e}")
+                import traceback
+                traceback.print_exc()
+            
+            return redirect(url_for('all_pairs'))
+
     
     def error_response(self, message, title="Erreur"):
         """🆕 Retourne une page d'erreur informative et stylée"""

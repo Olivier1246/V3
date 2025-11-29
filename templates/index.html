@@ -268,31 +268,46 @@
 
         <!-- Statistics Cards -->
         <div class="stats">
-            <div class="stat-card">
-                <div class="label">Total Paires</div>
-                <div class="value" id="total-pairs">{{ total_pairs }}</div>
+            <!-- Tableau des Paires -->
+            <div class="stat-card" style="grid-column: 1 / -1;">
+                <div class="label" style="text-align: center; margin-bottom: 15px; font-size: 1.1em; color: #00d9ff;">📊 Statistiques des Paires</div>
+                <table style="width: 100%; min-width: auto; border-collapse: collapse;">
+                    <thead style="background: rgba(0, 217, 255, 0.15);">
+                        <tr>
+                            <th style="padding: 12px; text-align: center; border-bottom: 2px solid #00d9ff; color: #00d9ff;">Total Paires</th>
+                            <th style="padding: 12px; text-align: center; border-bottom: 2px solid #00d9ff; color: #ff9800;">En Attente d'Achat</th>
+                            <th style="padding: 12px; text-align: center; border-bottom: 2px solid #00d9ff; color: #2196f3;">En Attente de Vente</th>
+                            <th style="padding: 12px; text-align: center; border-bottom: 2px solid #00d9ff; color: #4caf50;">Complétées</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td style="padding: 15px; text-align: center; font-size: 1.8em; font-weight: bold; color: #00d9ff;" id="total-pairs">{{ total_pairs }}</td>
+                            <td style="padding: 15px; text-align: center; font-size: 1.8em; font-weight: bold; color: #ff9800;" id="buy-count">{{ buy_count }}</td>
+                            <td style="padding: 15px; text-align: center; font-size: 1.8em; font-weight: bold; color: #2196f3;" id="sell-count">{{ sell_count }}</td>
+                            <td style="padding: 15px; text-align: center; font-size: 1.8em; font-weight: bold; color: #4caf50;" id="complete-count">{{ complete_count }}</td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
-            <div class="stat-card">
-                <div class="label">En Attente d'Achat</div>
-                <div class="value" id="buy-count" style="color: #ff9800;">{{ buy_count }}</div>
-            </div>
-            <div class="stat-card">
-                <div class="label">En Attente de Vente</div>
-                <div class="value" id="sell-count" style="color: #2196f3;">{{ sell_count }}</div>
-            </div>
-            <div class="stat-card">
-                <div class="label">Complétées</div>
-                <div class="value" id="complete-count" style="color: #4caf50;">{{ complete_count }}</div>
-            </div>
+            
+            <!-- Gain Total + Balances -->
             <div class="stat-card">
                 <div class="label">Gain Total</div>
                 <div class="value" id="total-gain" class="{% if total_gain >= 0 %}gain-positive{% else %}gain-negative{% endif %}">${{ "%.2f"|format(total_gain) }}</div>
+                <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid rgba(255, 255, 255, 0.1);">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                        <span style="color: #8892b0; font-size: 0.85em;">USDC Balance:</span>
+                        <span style="color: #00d9ff; font-weight: bold; font-size: 0.9em;" id="usdc-balance">{{ usdc_balance_formatted }}</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between;">
+                        <span style="color: #8892b0; font-size: 0.85em;">BTC Balance:</span>
+                        <span style="color: #f7931a; font-weight: bold; font-size: 0.9em;" id="btc-balance">{{ btc_balance_formatted }}</span>
+                    </div>
+                </div>
             </div>
-            <div class="stat-card">
-                <div class="label">Taux de Réussite</div>
-                <div class="value" id="win-rate">{{ "%.1f"|format(win_rate) }}%</div>
-            </div>
-            <!-- 🆕 État du Marché -->
+            
+            <!-- État du Marché -->
             <div class="stat-card">
                 <div class="label">État du Marché</div>
                 <div class="value" id="market-type" style="
@@ -304,7 +319,8 @@
                     {% if market_trend == 'UPTREND' %}📈 Tendance haussière{% elif market_trend == 'DOWNTREND' %}📉 Tendance baissière{% elif market_trend == 'SIDEWAYS' %}➡️ Latéral{% else %}{{ market_trend }}{% endif %}
                 </div>
             </div>
-            <!-- 🆕 Prix du BTC (formaté côté serveur) -->
+            
+            <!-- Prix du BTC -->
             <div class="stat-card">
                 <div class="label">Prix BTC</div>
                 <div class="value" id="btc-price" style="color: #f7931a;">

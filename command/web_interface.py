@@ -190,6 +190,26 @@ class WebInterface:
                             btc_price_formatted = f"${btc_price_raw:,.0f}"
                 except Exception as e:
                     print(f"⚠️ Erreur récupération analyse marché: {e}")
+                
+                # 🆕 Récupérer les balances depuis Hyperliquid
+                usdc_balance = 0
+                btc_balance = 0
+                usdc_balance_formatted = '-'
+                btc_balance_formatted = '-'
+                
+                try:
+                    if self.bot_controller and hasattr(self.bot_controller, 'trading_engine') and self.bot_controller.trading_engine:
+                        # Balance USDC
+                        usdc_balance = self.bot_controller.trading_engine.get_balance("USDC")
+                        if usdc_balance > 0:
+                            usdc_balance_formatted = f"${usdc_balance:,.2f}"
+                        
+                        # Balance BTC
+                        btc_balance = self.bot_controller.trading_engine.get_balance("BTC")
+                        if btc_balance > 0:
+                            btc_balance_formatted = f"{btc_balance:.8f} BTC"
+                except Exception as e:
+                    print(f"⚠️ Erreur récupération balances: {e}")
         
                 return render_template('index.html',
                     pairs=pairs,
@@ -202,7 +222,9 @@ class WebInterface:
                     now=now,
                     market_type=market_type,
                     market_trend=market_trend,
-                    btc_price_formatted=btc_price_formatted
+                    btc_price_formatted=btc_price_formatted,
+                    usdc_balance_formatted=usdc_balance_formatted,
+                    btc_balance_formatted=btc_balance_formatted
                 )
             except Exception as e:
                 print(f"❌ Erreur page index: {e}")

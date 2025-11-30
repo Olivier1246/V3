@@ -291,18 +291,18 @@
                 </table>
             </div>
             
-            <!-- Gain Total + Balances -->
-            <div class="stat-card">
+            <!-- Gain Total + Balances - LARGEUR AUTOMATIQUE -->
+            <div class="stat-card" style="grid-column: span 2; min-width: 300px;">
                 <div class="label">Gain Total</div>
-                <div class="value" id="total-gain" class="{% if total_gain >= 0 %}gain-positive{% else %}gain-negative{% endif %}">${{ "%.2f"|format(total_gain) }}</div>
+                <div class="value" id="total-gain" class="{% if total_gain >= 0 %}gain-positive{% else %}gain-negative{% endif %}" style="word-break: break-word;">${{ "%.2f"|format(total_gain) }}</div>
                 <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid rgba(255, 255, 255, 0.1);">
-                    <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                        <span style="color: #8892b0; font-size: 0.85em;">USDC Balance:</span>
-                        <span style="color: #00d9ff; font-weight: bold; font-size: 0.9em;" id="usdc-balance">{{ usdc_balance_formatted }}</span>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 8px; gap: 10px;">
+                        <span style="color: #8892b0; font-size: 0.85em; white-space: nowrap;">USDC Balance:</span>
+                        <span style="color: #00d9ff; font-weight: bold; font-size: 0.9em; word-break: break-word; text-align: right;" id="usdc-balance">{{ usdc_balance_formatted }}</span>
                     </div>
-                    <div style="display: flex; justify-content: space-between;">
-                        <span style="color: #8892b0; font-size: 0.85em;">BTC Balance:</span>
-                        <span style="color: #f7931a; font-weight: bold; font-size: 0.9em;" id="btc-balance">{{ btc_balance_formatted }}</span>
+                    <div style="display: flex; justify-content: space-between; gap: 10px;">
+                        <span style="color: #8892b0; font-size: 0.85em; white-space: nowrap;">BTC Balance:</span>
+                        <span style="color: #f7931a; font-weight: bold; font-size: 0.9em; word-break: break-word; text-align: right;" id="btc-balance">{{ btc_balance_formatted }}</span>
                     </div>
                 </div>
             </div>

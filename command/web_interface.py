@@ -379,23 +379,6 @@ class WebInterface:
                     'error': str(e)
                 }), 500
         
-        @self.app.route('/api/statistics')
-        def api_statistics():
-            """🆕 API: Statistiques globales"""
-            try:
-                stats = self.database.get_statistics()
-                
-                return jsonify({
-                    'success': True,
-                    'data': stats or {},
-                    'timestamp': datetime.now(timezone.utc).isoformat()
-                })
-            except Exception as e:
-                return jsonify({
-                    'success': False,
-                    'error': str(e)
-                }), 500
-
         @self.app.route('/api/statistics', methods=['GET'])
         def api_statistics():
             """Endpoint API pour les statistiques

@@ -10,6 +10,7 @@ structure des dossier
  -style.css
 /templates
  -index.html
+ -statistics.html
 /utils
  -diagnostic.py
 /telegram
@@ -29,6 +30,7 @@ structure des dossier
  -market_analyzer.py
  -reload_config.py
  -sell_orders.py
+ -statistics_api.py
  -trading_engine.py
  -web_interface.py
 config.py

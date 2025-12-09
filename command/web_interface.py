@@ -12,6 +12,7 @@ from flask import Flask, render_template, redirect, url_for, flash, jsonify, req
 from datetime import datetime, timezone
 from config import TradingConfig
 from DB.database import Database
+from command.statistics_api import StatisticsAPI  # 👈 NOUVEAU
 import threading
 import os
 import json
@@ -51,6 +52,9 @@ class WebInterface:
         self.app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
         self.app.config['TEMPLATES_AUTO_RELOAD'] = True
         
+        # Initialiser l'API des statistiques
+        self.stats_api = StatisticsAPI(self.database)  # 👈 NOUVEAU
+                
         # Désactiver le cache pour données fraîches
         @self.app.after_request
         def add_headers(response):
@@ -231,6 +235,20 @@ class WebInterface:
                 import traceback
                 traceback.print_exc()
                 return self.error_response(f"Erreur page paires: {e}")
+            
+        @self.app.route('/statistics')
+        def statistics_page():
+            """Page des statistiques détaillées"""
+            try:
+                return render_template('statistics.html')
+            except Exception as e:
+                print(f"❌ Erreur affichage page statistiques: {e}")
+                import traceback
+                traceback.print_exc()
+                return self.error_response(
+                    f"Impossible d'afficher la page des statistiques: {str(e)}",
+                    "Erreur Statistiques"
+                )            
 
         # ==================== API ROUTES ====================
         
@@ -376,6 +394,52 @@ class WebInterface:
                 return jsonify({
                     'success': False,
                     'error': str(e)
+                }), 500
+
+        @self.app.route('/api/statistics', methods=['GET'])
+        def api_statistics():
+            """Endpoint API pour les statistiques
+            
+            Query params:
+                - period: Période en jours ("7", "30", "90", "all")
+            
+            Returns:
+                JSON avec toutes les statistiques
+            """
+            period = request.args.get('period', '7')
+            
+            try:
+                stats = self.stats_api.get_statistics(period)
+                return jsonify(stats)
+            except Exception as e:
+                print(f"❌ Erreur API statistiques: {e}")
+                import traceback
+                traceback.print_exc()
+                return jsonify({
+                    'success': False,
+                    'error': str(e),
+                    'stats': {
+                        'total_profit': 0,
+                        'total_trades': 0,
+                        'win_rate': 0,
+                        'avg_profit': 0,
+                        'best_trade': 0,
+                        'worst_trade': 0
+                    },
+                    'market_breakdown': {
+                        'bull': {'trades': 0, 'profit': 0, 'win_rate': 0, 'avg_profit': 0},
+                        'bear': {'trades': 0, 'profit': 0, 'win_rate': 0, 'avg_profit': 0},
+                        'range': {'trades': 0, 'profit': 0, 'win_rate': 0, 'avg_profit': 0}
+                    },
+                    'cumulative_profit': {'dates': [], 'values': []},
+                    'distribution': {'labels': [], 'values': []},
+                    'recent_trades': [],
+                    'performance': {
+                        'sharpe_ratio': 0,
+                        'max_drawdown': 0,
+                        'profit_factor': 0,
+                        'avg_holding_time': 0
+                    }
                 }), 500
 
         @self.app.route('/api/index')
@@ -797,7 +861,8 @@ class WebInterface:
             print(f"   💰 Balance: http://localhost:{port}/api/balance")
             print(f"   📈 Market: http://localhost:{port}/api/market")
             print(f"   📋 Orders: http://localhost:{port}/api/pending_orders")
-            print(f"   📊 Stats: http://localhost:{port}/api/statistics")
+            print(f"   📊 Stats API: http://localhost:{port}/api/statistics")
+            print(f"   📈 Stats Page: http://localhost:{port}/statistics")
             print(f"   🔧 Version: Interface web corrigée v3.0")
             print(f"{'='*60}\n")
             

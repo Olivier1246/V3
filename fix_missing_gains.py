@@ -23,7 +23,7 @@ def main():
     print("\n📋 Chargement de la configuration...")
     try:
         config = TradingConfig()
-        config.display_summary()
+        print(f"✅ Configuration chargée (Frais maker: {config.maker_fee}%)")
     except Exception as e:
         print(f"❌ Erreur chargement configuration: {e}")
         return False

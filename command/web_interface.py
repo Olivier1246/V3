@@ -237,6 +237,7 @@ class WebInterface:
                 return self.error_response(f"Erreur page paires: {e}")
             
         @self.app.route('/statistics')
+        @self.app.route('/statistics.html')
         def statistics_page():
             """Page des statistiques détaillées"""
             try:

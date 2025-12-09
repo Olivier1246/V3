@@ -72,17 +72,41 @@ class StatisticsAPI:
         }
     
     def _get_completed_trades(self, start_date=None) -> List[Dict]:
-        """Récupère les trades complétés depuis la BDD"""
+        """Récupère les trades complétés depuis la BDD
+        
+        ✅ CORRECTIONS:
+        - Utilise self.database.db_file au lieu de db_path
+        - Utilise les champs gain_usdc et gain_percent déjà calculés correctement dans la BDD
+        """
         try:
-            conn = sqlite3.connect(self.database.db_path)
+            # ✅ FIX: Utiliser db_file au lieu de db_path
+            conn = sqlite3.connect(self.database.db_file)
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             
+            # ✅ FIX: Utiliser gain_usdc et gain_percent de la BDD (déjà calculés avec frais)
+            # Au lieu de recalculer ici
             query = """
                 SELECT 
-                    *,
-                    (sell_price_btc * quantity_btc) - (buy_price_btc * quantity_btc) as profit_usdc,
-                    ((sell_price_btc - buy_price_btc) / buy_price_btc * 100) as profit_percent
+                    index,
+                    status,
+                    quantity_usdc,
+                    quantity_btc,
+                    buy_price_btc,
+                    sell_price_btc,
+                    gain_percent,
+                    gain_usdc,
+                    buy_order_id,
+                    sell_order_id,
+                    offset_display,
+                    market_type,
+                    symbol,
+                    created_at,
+                    buy_filled_at,
+                    sell_placed_at,
+                    completed_at,
+                    COALESCE(gain_usdc, 0) as profit_usdc,
+                    COALESCE(gain_percent, 0) as profit_percent
                 FROM order_pairs
                 WHERE status = 'Complete'
             """
@@ -102,10 +126,21 @@ class StatisticsAPI:
                 trade = dict(row)
                 trades.append(trade)
             
+            if not trades:
+                print(f"⚠️  Aucun trade complété trouvé dans la base de données")
+                print(f"   Fichier DB: {self.database.db_file}")
+                if start_date:
+                    print(f"   Période: depuis {start_date.isoformat()}")
+            else:
+                print(f"✅ {len(trades)} trades récupérés depuis la BDD")
+            
             return trades
             
         except Exception as e:
-            print(f"Erreur récupération trades: {e}")
+            print(f"❌ Erreur récupération trades: {e}")
+            print(f"   Fichier DB: {self.database.db_file}")
+            import traceback
+            traceback.print_exc()
             return []
     
     def _calculate_main_stats(self, trades: List[Dict]) -> Dict:

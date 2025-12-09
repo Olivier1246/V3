@@ -86,9 +86,10 @@ class StatisticsAPI:
             
             # ✅ FIX: Utiliser gain_usdc et gain_percent de la BDD (déjà calculés avec frais)
             # Au lieu de recalculer ici
+            # ⚠️  "index" est un mot réservé SQL, il faut l'échapper avec des guillemets doubles
             query = """
                 SELECT 
-                    index,
+                    "index",
                     status,
                     quantity_usdc,
                     quantity_btc,
